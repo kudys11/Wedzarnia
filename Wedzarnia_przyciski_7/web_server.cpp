@@ -339,10 +339,23 @@ void web_server_init() {
   });
 
   server.on("/api/profiles", HTTP_GET, []() {
-    server.send(200, "application/json", storage_list_profiles_json());
+    char jsonBuffer[2048];
+    size_t len = storage_list_profiles_json(jsonBuffer, sizeof(jsonBuffer));
+    if (len > 0) {
+      server.send(200, "application/json", jsonBuffer);
+    } else {
+      server.send(500, "application/json", "[]");
+    }
   });
+  
   server.on("/api/github_profiles", HTTP_GET, []() {
-    server.send(200, "application/json", storage_list_github_profiles_json());
+    char jsonBuffer[2048];
+    size_t len = storage_list_github_profiles_json(jsonBuffer, sizeof(jsonBuffer));
+    if (len > 0) {
+      server.send(200, "application/json", jsonBuffer);
+    } else {
+      server.send(500, "application/json", "[]");
+    }
   });
 
   server.on("/profile/get", HTTP_GET, []() {
@@ -350,34 +363,44 @@ void web_server_init() {
       server.send(400, "text/plain", "Brak nazwy profilu lub źródła");
       return;
     }
-    String profileName = server.arg("name");
-    String source = server.arg("source");
-    if (source == "sd") {
-      server.send(200, "application/json", storage_get_profile_as_json(profileName.c_str()));
-    } else if (source == "github") {
-      // Edycja profili z GitHuba nie jest wspierana, ale możemy zwrócić jego zawartość
-      server.send(200, "application/json", storage_get_profile_as_json(profileName.c_str()));
+    const char* profileName = server.arg("name").c_str();
+    const char* source = server.arg("source").c_str();
+    
+    char jsonBuffer[2048];
+    size_t len = 0;
+    
+    if (strcmp(source, "sd") == 0 || strcmp(source, "github") == 0) {
+      len = storage_get_profile_as_json(profileName, jsonBuffer, sizeof(jsonBuffer));
+    }
+    
+    if (len > 0) {
+      server.send(200, "application/json", jsonBuffer);
     } else {
-      server.send(400, "text/plain", "Nieznane źródło");
+      server.send(400, "text/plain", "Nieznane źródło lub błąd");
     }
   });
 
   server.on("/profile/select", HTTP_GET, []() {
     if (server.hasArg("name") && server.hasArg("source")) {
-      String profileName = server.arg("name");
-      String source = server.arg("source");
+      const char* profileName = server.arg("name").c_str();
+      const char* source = server.arg("source").c_str();
       bool success = false;
-      if (source == "sd") {
-        String fullPath = "/profiles/" + profileName;
-        storage_save_profile_path_nvs(fullPath.c_str());
+      char path[128];
+      
+      if (strcmp(source, "sd") == 0) {
+        snprintf(path, sizeof(path), "/profiles/%s", profileName);
+        storage_save_profile_path_nvs(path);
         success = storage_load_profile();
-      } else if (source == "github") {
-        String githubPath = "github:" + profileName;
-        storage_save_profile_path_nvs(githubPath.c_str());
-        success = storage_load_github_profile(profileName.c_str());
+      } else if (strcmp(source, "github") == 0) {
+        snprintf(path, sizeof(path), "github:%s", profileName);
+        storage_save_profile_path_nvs(path);
+        success = storage_load_github_profile(profileName);
       }
+      
       if (success) {
-        server.send(200, "text/plain", "OK, profil " + profileName + " załadowany.");
+        char response[128];
+        snprintf(response, sizeof(response), "OK, profil %s załadowany.", profileName);
+        server.send(200, "text/plain", response);
       } else {
         server.send(500, "text/plain", "Błąd ładowania profilu.");
       }
@@ -441,22 +464,39 @@ void web_server_init() {
       server.send(400, "text/plain", "Brak nazwy pliku lub danych.");
       return;
     }
-    String filename = server.arg("filename");
-    String data = server.arg("data");
-    if (filename.isEmpty()) {
+    
+    const char* filenameArg = server.arg("filename").c_str();
+    const char* dataArg = server.arg("data").c_str();
+    
+    if (strlen(filenameArg) == 0) {
       server.send(400, "text/plain", "Nazwa pliku nie może być pusta.");
       return;
     }
-    if (!filename.endsWith(".prof")) { filename += ".prof"; }
-    String path = "/profiles/" + filename;
+    
+    char filename[128];
+    strncpy(filename, filenameArg, sizeof(filename) - 6); // Reserve space for ".prof"
+    filename[sizeof(filename) - 6] = '\0';
+    
+    // Check if ends with .prof, if not add it
+    size_t len = strlen(filename);
+    if (len < 5 || strcmp(filename + len - 5, ".prof") != 0) {
+      strncat(filename, ".prof", sizeof(filename) - len - 1);
+    }
+    
+    char path[160];
+    snprintf(path, sizeof(path), "/profiles/%s", filename);
+    
     File file = SD.open(path, FILE_WRITE);
     if (!file) {
       server.send(500, "text/plain", "Nie można otworzyć pliku do zapisu.");
       return;
     }
-    file.print(data);
+    file.print(dataArg);
     file.close();
-    server.send(200, "text/plain", "Profil '" + filename + "' został pomyślnie zapisany!");
+    
+    char response[200];
+    snprintf(response, sizeof(response), "Profil '%s' został pomyślnie zapisany!", filename);
+    server.send(200, "text/plain", response);
   });
 
 server.on("/update", HTTP_POST, 
@@ -559,14 +599,18 @@ server.on("/update", HTTP_POST,
     server.send(200, "text/plain", "OK");
   });
   server.on("/wifi", HTTP_GET, []() {
-    String html = "<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
-    html += "<style>body{font-family:sans-serif;background:#111;color:#eee;padding:20px;}input{padding:8px;margin:5px 0;width:200px;}</style>";
-    html += "</head><body><h2>WiFi STA Configuration</h2>";
-    html += "<form method='POST' action='/wifi/save'>";
-    html += "SSID: <input name='ssid' value='" + String(storage_get_wifi_ssid()) + "'><br>";
-    html += "Password: <input name='pass' type='password'><br>";
-    html += "<input type='submit' value='Connect'>";
-    html += "</form><br><a href='/'>← Back</a></body></html>";
+    char html[512];
+    const char* ssid = storage_get_wifi_ssid();
+    snprintf(html, sizeof(html),
+      "<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+      "<style>body{font-family:sans-serif;background:#111;color:#eee;padding:20px;}input{padding:8px;margin:5px 0;width:200px;}</style>"
+      "</head><body><h2>WiFi STA Configuration</h2>"
+      "<form method='POST' action='/wifi/save'>"
+      "SSID: <input name='ssid' value='%s'><br>"
+      "Password: <input name='pass' type='password'><br>"
+      "<input type='submit' value='Connect'>"
+      "</form><br><a href='/'>← Back</a></body></html>",
+      ssid);
     server.send(200, "text/html", html);
   });
   server.on("/wifi/save", HTTP_POST, []() {
