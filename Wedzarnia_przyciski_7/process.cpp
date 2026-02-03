@@ -49,7 +49,7 @@ static void handleAutoMode() {
     
     if (step >= 0 && step < count) {
         output_lock();
-        ledcWrite(PIN_SMOKE_FAN, g_profile[step].smokePwm);
+        ledcWrite(LEDC_CHANNEL_SMOKE, g_profile[step].smokePwm);
         output_unlock();
     }
 }
@@ -60,7 +60,7 @@ static void handleManualMode() {
     int smoke = g_manualSmokePwm;
     state_unlock();
     output_lock();
-    ledcWrite(PIN_SMOKE_FAN, smoke);
+    ledcWrite(LEDC_CHANNEL_SMOKE, smoke);
     output_unlock();
 }
 
