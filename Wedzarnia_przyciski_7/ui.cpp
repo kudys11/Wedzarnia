@@ -334,16 +334,6 @@ void ui_update_display() {
                 if (profilesLoading) {
                     display.setCursor(10, 95); display.print("Wczytywanie...");
                     // Pobieramy listę profili bezpośrednio do bufora UI
-                    // storage.cpp zapisuje je do swojego bufora profileNames, 
-                    // my je kopiujemy do uiProfileNames
-                    extern char profileNames[MAX_PROFILES][MAX_PROFILE_NAME_LEN];
-                    extern int profileCount;
-                    
-                    // Wywołanie funkcji storage powoduje wypełnienie profileNames/profileCount
-                    // Jednak storage_list_profiles_json() teraz serializuje do WebServer,
-                    // więc musimy to zrobić inaczej - wywołamy wewnętrzną wersję
-                    // UWAGA: To wymaga dodania pomocniczej funkcji w storage.cpp
-                    // Na razie zrobimy to inline tutaj
                     
                     uiProfileCount = 0;
                     File root = SD.open("/profiles");
