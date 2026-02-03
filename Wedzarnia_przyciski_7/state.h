@@ -52,4 +52,4 @@ void heater_unlock(); // NOWE
 void init_state();
 
 bool storage_reinit_sd();
-String storage_get_profile_as_json(const char* profileName);
+void storage_get_profile_as_json(const char* profileName, char* buffer, size_t bufferSize);
