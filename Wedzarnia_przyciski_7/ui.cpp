@@ -5,7 +5,6 @@
 #include "storage.h"
 #include "process.h"
 #include <climits>
-#include <vector>
 #include <ArduinoJson.h>
 
 // ============================================================
@@ -16,7 +15,8 @@ static int mainMenuIndex = 0;
 static const int MAIN_MENU_ITEMS = 3;
 static int sourceMenuIndex = 0;
 static const int SOURCE_MENU_ITEMS = 2;
-static std::vector<String> profileList;
+static char profileList[MAX_PROFILES][MAX_PROFILE_NAME_LEN];
+static int profileListCount = 0;
 static int profileMenuIndex = 0;
 static bool profilesLoading = false;
 static int manualEditIndex = 0;
@@ -27,10 +27,10 @@ static bool force_redraw = true;
 
 // Cache wartości do optymalizacji wyświetlania
 static double last_tc = -99, last_tm = -99, last_ts = -99;
-static String last_state_str = "";
-static String last_step_name = "";
-static String last_elapsed_str = "";
-static String last_remaining_str = "";
+static char last_state_str[32] = "";
+static char last_step_name[64] = "";
+static char last_elapsed_str[64] = "";
+static char last_remaining_str[64] = "";
 
 
 // ============================================================
@@ -60,8 +60,8 @@ void formatTime(char* buf, size_t len, unsigned long totalSeconds) {
     snprintf(buf, len, "%02d:%02d:%02d", hours, minutes, seconds);
 }
 
-static void updateText(int16_t x, int16_t y, int16_t w, int16_t h, const String& oldText, const String& newText, uint16_t color, uint8_t textSize) {
-    if (oldText != newText || force_redraw) {
+static void updateText(int16_t x, int16_t y, int16_t w, int16_t h, const char* oldText, const char* newText, uint16_t color, uint8_t textSize) {
+    if (strcmp(oldText, newText) != 0 || force_redraw) {
         display.setTextSize(textSize);
         display.fillRect(x, y, w, h, ST77XX_BLACK);
         display.setCursor(x, y);
@@ -112,22 +112,25 @@ void ui_handle_buttons() {
                     case UiState::UI_STATE_MENU_SOURCE:
                         if (pin == PIN_BTN_UP || pin == PIN_BTN_DOWN) sourceMenuIndex = (sourceMenuIndex + 1) % SOURCE_MENU_ITEMS;
                         else if (pin == PIN_BTN_EXIT) currentUiState = UiState::UI_STATE_MENU_MAIN;
-                        else if (pin == PIN_BTN_ENTER) { profileMenuIndex = 0; profilesLoading = true; profileList.clear(); currentUiState = UiState::UI_STATE_MENU_PROFILES; }
+                        else if (pin == PIN_BTN_ENTER) { profileMenuIndex = 0; profilesLoading = true; profileListCount = 0; currentUiState = UiState::UI_STATE_MENU_PROFILES; }
                         break;
                     case UiState::UI_STATE_MENU_PROFILES:
                         { 
                             if (profilesLoading) { if (pin == PIN_BTN_EXIT) { currentUiState = UiState::UI_STATE_MENU_SOURCE; } break; }
                             
-                            int listSize = profileList.size();
-                            if (listSize == 0) { if (pin == PIN_BTN_EXIT) { currentUiState = UiState::UI_STATE_MENU_SOURCE; } break; }
+                            if (profileListCount == 0) { if (pin == PIN_BTN_EXIT) { currentUiState = UiState::UI_STATE_MENU_SOURCE; } break; }
                             
-                            if (pin == PIN_BTN_UP) { profileMenuIndex = (profileMenuIndex - 1 + listSize) % listSize; }
-                            else if (pin == PIN_BTN_DOWN) { profileMenuIndex = (profileMenuIndex + 1) % listSize; }
+                            if (pin == PIN_BTN_UP) { profileMenuIndex = (profileMenuIndex - 1 + profileListCount) % profileListCount; }
+                            else if (pin == PIN_BTN_DOWN) { profileMenuIndex = (profileMenuIndex + 1) % profileListCount; }
                             else if (pin == PIN_BTN_EXIT) { currentUiState = UiState::UI_STATE_MENU_SOURCE; }
                             else if (pin == PIN_BTN_ENTER) {
-                                String selectedProfile = profileList[profileMenuIndex];
-                                String path = (sourceMenuIndex == 0) ? ("/profiles/" + selectedProfile) : ("github:" + selectedProfile);
-                                storage_save_profile_path_nvs(path.c_str());
+                                char path[128];
+                                if (sourceMenuIndex == 0) {
+                                    snprintf(path, sizeof(path), "/profiles/%s", profileList[profileMenuIndex]);
+                                } else {
+                                    snprintf(path, sizeof(path), "github:%s", profileList[profileMenuIndex]);
+                                }
+                                storage_save_profile_path_nvs(path);
                                 process_start_auto();
                                 currentUiState = UiState::UI_STATE_IDLE;
                             }
@@ -199,7 +202,8 @@ void ui_update_display() {
     if (force_redraw) {
         display.fillScreen(ST77XX_BLACK);
         last_tc = -99; last_tm = -99; last_ts = -99;
-        last_state_str = ""; last_step_name = ""; last_elapsed_str = ""; last_remaining_str = "";
+        last_state_str[0] = '\0'; last_step_name[0] = '\0'; 
+        last_elapsed_str[0] = '\0'; last_remaining_str[0] = '\0';
     }
     
     state_lock();
@@ -220,6 +224,7 @@ void ui_update_display() {
     state_unlock();
     
     char buf[32];
+    char displayBuf[128];
     
     if (force_redraw) {
         display.setTextWrap(false);
@@ -231,20 +236,29 @@ void ui_update_display() {
         display.drawFastHLine(0, 72, SCREEN_WIDTH, ST77XX_DARKGREY);
     }
     
-    updateText(50, 5, 78, 16, String(last_tc, 1) + " C", String(tc, 1) + " C", ST77XX_ORANGE, 2);
+    snprintf(displayBuf, sizeof(displayBuf), "%.1f C", tc);
+    char oldBuf[32];
+    snprintf(oldBuf, sizeof(oldBuf), "%.1f C", last_tc);
+    updateText(50, 5, 78, 16, oldBuf, displayBuf, ST77XX_ORANGE, 2);
     last_tc = tc;
-    updateText(50, 27, 78, 16, String(last_tm, 1) + " C", String(tm, 1) + " C", ST77XX_YELLOW, 2);
+    
+    snprintf(displayBuf, sizeof(displayBuf), "%.1f C", tm);
+    snprintf(oldBuf, sizeof(oldBuf), "%.1f C", last_tm);
+    updateText(50, 27, 78, 16, oldBuf, displayBuf, ST77XX_YELLOW, 2);
     last_tm = tm;
     
     const char* stateNameStr = getStateStringForDisplay(st);
     if (st == ProcessState::RUNNING_AUTO || st == ProcessState::RUNNING_MANUAL) {
         if(force_redraw) { display.setTextSize(1); display.setCursor(0, 53); display.setTextColor(ST77XX_WHITE); display.print("T.set:"); }
-        updateText(50, 53, 78, 16, String(last_ts, 1) + " C", String(ts, 1) + " C", ST77XX_CYAN, 2);
+        snprintf(displayBuf, sizeof(displayBuf), "%.1f C", ts);
+        snprintf(oldBuf, sizeof(oldBuf), "%.1f C", last_ts);
+        updateText(50, 53, 78, 16, oldBuf, displayBuf, ST77XX_CYAN, 2);
         last_ts = ts;
     } else {
         updateText(10, 53, 118, 16, last_state_str, stateNameStr, ST77XX_CYAN, 2);
     }
-    last_state_str = stateNameStr;
+    strncpy(last_state_str, stateNameStr, sizeof(last_state_str) - 1);
+    last_state_str[sizeof(last_state_str) - 1] = '\0';
     
     if (currentUiState != lastUiState || force_redraw) {
         display.fillRect(0, 74, SCREEN_WIDTH, 86, ST77XX_BLACK);
@@ -254,19 +268,25 @@ void ui_update_display() {
         if (st != ProcessState::IDLE) {
             display.setTextSize(1);
             if (st == ProcessState::RUNNING_AUTO) {
-                updateText(0, 80, 128, 8, last_step_name, String("Krok: ") + stepName, ST77XX_WHITE, 1);
-                last_step_name = String("Krok: ") + stepName;
+                snprintf(displayBuf, sizeof(displayBuf), "Krok: %s", stepName);
+                updateText(0, 80, 128, 8, last_step_name, displayBuf, ST77XX_WHITE, 1);
+                strncpy(last_step_name, displayBuf, sizeof(last_step_name) - 1);
+                last_step_name[sizeof(last_step_name) - 1] = '\0';
 
                 unsigned long elapsedSec = (millis() - stepStartTime) / 1000;
                 formatTime(buf, sizeof(buf), elapsedSec);
-                updateText(0, 95, 128, 8, last_elapsed_str, String("Uplynelo: ") + buf, ST77XX_WHITE, 1);
-                last_elapsed_str = String("Uplynelo: ") + buf;
+                snprintf(displayBuf, sizeof(displayBuf), "Uplynelo: %s", buf);
+                updateText(0, 95, 128, 8, last_elapsed_str, displayBuf, ST77XX_WHITE, 1);
+                strncpy(last_elapsed_str, displayBuf, sizeof(last_elapsed_str) - 1);
+                last_elapsed_str[sizeof(last_elapsed_str) - 1] = '\0';
 
                 unsigned long totalSec = stepTotalTimeMs / 1000;
                 unsigned long remainingSec = (totalSec > elapsedSec) ? totalSec - elapsedSec : 0;
                 formatTime(buf, sizeof(buf), remainingSec);
-                updateText(0, 110, 128, 8, last_remaining_str, String("Zostalo:  ") + buf, ST77XX_WHITE, 1);
-                last_remaining_str = String("Zostalo:  ") + buf;
+                snprintf(displayBuf, sizeof(displayBuf), "Zostalo:  %s", buf);
+                updateText(0, 110, 128, 8, last_remaining_str, displayBuf, ST77XX_WHITE, 1);
+                strncpy(last_remaining_str, displayBuf, sizeof(last_remaining_str) - 1);
+                last_remaining_str[sizeof(last_remaining_str) - 1] = '\0';
                 
                 if(force_redraw) { display.setCursor(15, 140); display.print("(EXIT = Zatrzymaj)"); }
 
@@ -275,7 +295,8 @@ void ui_update_display() {
                 unsigned long elapsedSec = (millis() - processStartTime) / 1000;
                 formatTime(buf, sizeof(buf), elapsedSec);
                 updateText(10, 105, 120, 16, last_elapsed_str, buf, ST77XX_GREEN, 2);
-                last_elapsed_str = buf;
+                strncpy(last_elapsed_str, buf, sizeof(last_elapsed_str) - 1);
+                last_elapsed_str[sizeof(last_elapsed_str) - 1] = '\0';
             }
         } else {
             display.setTextSize(2);
@@ -297,28 +318,40 @@ void ui_update_display() {
             case UiState::UI_STATE_MENU_PROFILES:
                 if (profilesLoading) {
                     display.setCursor(10, 95); display.print("Wczytywanie...");
-                    String json_str = (sourceMenuIndex == 0) ? storage_list_profiles_json() : storage_list_github_profiles_json();
-                    profileList.clear();
-                    DynamicJsonDocument doc(2048);
-                    if (deserializeJson(doc, json_str) == DeserializationError::Ok) {
-                        for (JsonVariant value : doc.as<JsonArray>()) { profileList.push_back(String(value.as<const char*>())); }
+                    char jsonBuf[2048];
+                    if (sourceMenuIndex == 0) {
+                        storage_list_profiles_json(jsonBuf, sizeof(jsonBuf));
+                    } else {
+                        storage_list_github_profiles_json(jsonBuf, sizeof(jsonBuf));
+                    }
+                    
+                    profileListCount = 0;
+                    StaticJsonDocument<2048> doc;
+                    if (deserializeJson(doc, jsonBuf) == DeserializationError::Ok) {
+                        JsonArray array = doc.as<JsonArray>();
+                        for (JsonVariant value : array) {
+                            if (profileListCount < MAX_PROFILES) {
+                                const char* name = value.as<const char*>();
+                                strncpy(profileList[profileListCount], name, MAX_PROFILE_NAME_LEN - 1);
+                                profileList[profileListCount][MAX_PROFILE_NAME_LEN - 1] = '\0';
+                                profileListCount++;
+                            }
+                        }
                     }
                     profilesLoading = false;
                     force_redraw = true;
                     ui_update_display(); 
                     return;
                 } 
-                if (profileList.empty()) {
+                if (profileListCount == 0) {
                     display.setCursor(10, 95); display.print("Brak profili!");
                 } else {
                     display.setTextSize(1);
-                    for (size_t i = 0; i < profileList.size(); i++) {
-                        if (i < 6) {
-                             display.setCursor(0, 80 + i * 13);
-                             if ((int)i == profileMenuIndex) { display.setTextColor(ST77XX_GREEN); display.print("> "); }
-                             else { display.setTextColor(ST77XX_WHITE); display.print("  "); }
-                             display.print(profileList[i]);
-                        }
+                    for (int i = 0; i < profileListCount && i < 6; i++) {
+                         display.setCursor(0, 80 + i * 13);
+                         if (i == profileMenuIndex) { display.setTextColor(ST77XX_GREEN); display.print("> "); }
+                         else { display.setTextColor(ST77XX_WHITE); display.print("  "); }
+                         display.print(profileList[i]);
                     }
                 }
                 break;
