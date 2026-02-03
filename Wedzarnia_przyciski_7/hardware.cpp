@@ -25,15 +25,20 @@ void hardware_init_pins() {
 	
 }
 void hardware_init_ledc() {
-    if (!ledcAttach(PIN_SSR1, LEDC_FREQ, LEDC_RESOLUTION)) 
-        Serial.println("LEDC SSR1 attach failed!");
-    if (!ledcAttach(PIN_SSR2, LEDC_FREQ, LEDC_RESOLUTION)) 
-        Serial.println("LEDC SSR2 attach failed!");
-    if (!ledcAttach(PIN_SSR3, LEDC_FREQ, LEDC_RESOLUTION)) 
-        Serial.println("LEDC SSR3 attach failed!");
-    if (!ledcAttach(PIN_SMOKE_FAN, LEDC_FREQ, LEDC_RESOLUTION)) 
-        Serial.println("LEDC SMOKE attach failed!");
+    // Konfiguracja kanałów LEDC zgodnie z ESP32-ARDUINO API
+    ledcSetup(LEDC_CHANNEL_SSR1, LEDC_FREQ, LEDC_RESOLUTION);
+    ledcAttachPin(PIN_SSR1, LEDC_CHANNEL_SSR1);
     
+    ledcSetup(LEDC_CHANNEL_SSR2, LEDC_FREQ, LEDC_RESOLUTION);
+    ledcAttachPin(PIN_SSR2, LEDC_CHANNEL_SSR2);
+    
+    ledcSetup(LEDC_CHANNEL_SSR3, LEDC_FREQ, LEDC_RESOLUTION);
+    ledcAttachPin(PIN_SSR3, LEDC_CHANNEL_SSR3);
+    
+    ledcSetup(LEDC_CHANNEL_SMOKE, LEDC_FREQ, LEDC_RESOLUTION);
+    ledcAttachPin(PIN_SMOKE_FAN, LEDC_CHANNEL_SMOKE);
+    
+    Serial.println("LEDC initialized for SSR1, SSR2, SSR3, and SMOKE");
     allOutputsOff();
 }
 void hardware_init_sensors() {

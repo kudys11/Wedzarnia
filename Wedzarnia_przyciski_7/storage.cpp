@@ -8,11 +8,16 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <WebServer.h>
 
 // Zmienne konfiguracyjne - prywatne dla tego modułu
 static char lastProfilePath[64] = "/profiles/test.prof";
 static char wifiStaSsid[32] = "";
 static char wifiStaPass[64] = "";
+
+// Statyczne bufory dla listy profili
+static char profileNames[MAX_PROFILES][MAX_PROFILE_NAME_LEN];
+static int profileCount = 0;
 
 // Funkcja pomocnicza
 static bool parseBool(const char* s) {
@@ -25,11 +30,15 @@ const char* storage_get_wifi_pass() { return wifiStaPass; }
 
 // ZMODYFIKOWANA funkcja, teraz działa jako "router"
 bool storage_load_profile() {
-    String pathStr = String(lastProfilePath);
+    // Używamy lokalnej kopii zamiast String
+    char pathBuf[64];
+    strncpy(pathBuf, lastProfilePath, sizeof(pathBuf) - 1);
+    pathBuf[sizeof(pathBuf) - 1] = '\0';
 
-    if (pathStr.startsWith("github:")) {
-        String profileName = pathStr.substring(7); // Usuń prefix "github:"
-        return storage_load_github_profile(profileName.c_str());
+    if (strncmp(pathBuf, "github:", 7) == 0) {
+        // Usuń prefix "github:"
+        const char* profileName = pathBuf + 7;
+        return storage_load_github_profile(profileName);
     } else {
         // Istniejąca logika dla karty SD
         if (!SD.exists(lastProfilePath)) {
@@ -144,30 +153,45 @@ void storage_save_manual_settings_nvs() {
     });
 }
 
-String storage_list_profiles_json() {
-    String json = "[";
-    bool first = true;
+void storage_list_profiles_json(WebServer& server) {
+    StaticJsonDocument<2048> doc;
+    JsonArray array = doc.to<JsonArray>();
+    
+    profileCount = 0;
     File root = SD.open("/profiles");
     if (!root || !root.isDirectory()) {
         Serial.println("Nie można otworzyć katalogu /profiles");
-        return "[]";
+        root.close();
+        server.send(200, "application/json", "[]");
+        return;
     }
+    
     File file = root.openNextFile();
-    while (file) {
+    while (file && profileCount < MAX_PROFILES) {
         if (!file.isDirectory()) {
-            String fileName = file.name();
-            if (fileName.endsWith(".prof")) {
-                if (!first) { json += ","; }
-                json += "\"" + fileName + "\"";
-                first = false;
+            const char* fileName = file.name();
+            size_t len = strlen(fileName);
+            if (len > 5 && strcmp(fileName + len - 5, ".prof") == 0) {
+                // Kopiuj nazwę do bufora z obcięciem jeśli za długa
+                if (len >= MAX_PROFILE_NAME_LEN) {
+                    Serial.printf("Profile name truncated: %s\n", fileName);
+                    strncpy(profileNames[profileCount], fileName, MAX_PROFILE_NAME_LEN - 1);
+                    profileNames[profileCount][MAX_PROFILE_NAME_LEN - 1] = '\0';
+                } else {
+                    strcpy(profileNames[profileCount], fileName);
+                }
+                array.add(profileNames[profileCount]);
+                profileCount++;
             }
         }
         file = root.openNextFile();
     }
     root.close();
-    json += "]";
-    Serial.println("Znalezione profile: " + json);
-    return json;
+    
+    String output;
+    serializeJson(doc, output);
+    server.send(200, "application/json", output);
+    Serial.printf("Znalezione profile: %d\n", profileCount);
 }
 
 bool storage_reinit_sd() {
@@ -183,13 +207,24 @@ bool storage_reinit_sd() {
     }
 }
 
-String storage_get_profile_as_json(const char* profileName) {
-    String path = "/profiles/" + String(profileName);
-    if (!SD.exists(path)) { return "[]"; }
+void storage_get_profile_as_json(WebServer& server, const char* profileName) {
+    char path[80];
+    snprintf(path, sizeof(path), "/profiles/%s", profileName);
+    
+    if (!SD.exists(path)) {
+        server.send(404, "application/json", "[]");
+        return;
+    }
+    
     File f = SD.open(path, "r");
-    if (!f) { return "[]"; }
-    String json = "[";
-    bool firstStep = true;
+    if (!f) {
+        server.send(500, "application/json", "[]");
+        return;
+    }
+    
+    StaticJsonDocument<2048> doc;
+    JsonArray array = doc.to<JsonArray>();
+    
     char lineBuf[256];
     while (f.available()) {
         int len = f.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
@@ -197,60 +232,93 @@ String storage_get_profile_as_json(const char* profileName) {
         char* line = lineBuf;
         while (*line == ' ' || *line == '\t') line++;
         len = strlen(line);
-        while (len > 0 && (line[len - 1] == '\r' || line[len - 1] == '\n' || line[len - 1] == ' ')) { line[--len] = '\0'; }
+        while (len > 0 && (line[len - 1] == '\r' || line[len - 1] == '\n' || line[len - 1] == ' ')) { 
+            line[--len] = '\0'; 
+        }
         if (len == 0 || line[0] == '#') continue;
+        
         char* fields[10];
         int fieldCount = 0;
         char* token = strtok(line, ";");
-        while (token && fieldCount < 10) { fields[fieldCount++] = token; token = strtok(NULL, ";"); }
+        while (token && fieldCount < 10) { 
+            fields[fieldCount++] = token; 
+            token = strtok(NULL, ";"); 
+        }
         if (fieldCount < 10) continue;
-        if (!firstStep) { json += ","; }
-        json += "{";
-        json += "\"name\":\"" + String(fields[0]) + "\",";
-        json += "\"tSet\":" + String(fields[1]) + ",";
-        json += "\"tMeat\":" + String(fields[2]) + ",";
-        json += "\"minTime\":" + String(fields[3]) + ",";
-        json += "\"powerMode\":" + String(fields[4]) + ",";
-        json += "\"smoke\":" + String(fields[5]) + ",";
-        json += "\"fanMode\":" + String(fields[6]) + ",";
-        json += "\"fanOn\":" + String(fields[7]) + ",";
-        json += "\"fanOff\":" + String(fields[8]) + ",";
-        json += "\"useMeatTemp\":" + String(fields[9]);
-        json += "}";
-        firstStep = false;
+        
+        JsonObject step = array.createNestedObject();
+        step["name"] = fields[0];
+        step["tSet"] = atof(fields[1]);
+        step["tMeat"] = atof(fields[2]);
+        step["minTime"] = atoi(fields[3]);
+        step["powerMode"] = atoi(fields[4]);
+        step["smoke"] = atoi(fields[5]);
+        step["fanMode"] = atoi(fields[6]);
+        step["fanOn"] = atoi(fields[7]);
+        step["fanOff"] = atoi(fields[8]);
+        step["useMeatTemp"] = strcmp(fields[9], "1") == 0 || strcasecmp(fields[9], "true") == 0;
     }
     f.close();
-    json += "]";
-    return json;
+    
+    String output;
+    serializeJson(doc, output);
+    server.send(200, "application/json", output);
 }
 
-String storage_list_github_profiles_json() {
-    if (WiFi.status() != WL_CONNECTED) return "[\"Brak WiFi\"]";
+void storage_list_github_profiles_json(WebServer& server) {
+    if (WiFi.status() != WL_CONNECTED) {
+        server.send(200, "application/json", "[\"Brak WiFi\"]");
+        return;
+    }
+    
     HTTPClient http;
     http.begin(CFG_GITHUB_API_URL);
     http.addHeader("User-Agent", "ESP32-Wedzarnia-Client");
     int httpCode = http.GET();
-    yield(); // <-- POPRAWKA
+    yield();
+    
     if (httpCode != HTTP_CODE_OK) {
         http.end();
-        return "[\"Blad API GitHub\"]";
+        server.send(200, "application/json", "[\"Blad API GitHub\"]");
+        return;
     }
-    DynamicJsonDocument doc(2048);
-    deserializeJson(doc, http.getStream());
+    
+    DynamicJsonDocument docIn(4096);
+    DeserializationError error = deserializeJson(docIn, http.getStream());
     http.end();
-    String json = "[";
-    bool first = true;
-    for (JsonVariant value : doc.as<JsonArray>()) {
+    
+    if (error) {
+        server.send(500, "application/json", "[\"Blad parsowania JSON\"]");
+        return;
+    }
+    
+    StaticJsonDocument<2048> docOut;
+    JsonArray array = docOut.to<JsonArray>();
+    
+    profileCount = 0;
+    for (JsonVariant value : docIn.as<JsonArray>()) {
         const char* filename = value["name"];
-        String filenameStr = String(filename);
-        if (filenameStr.endsWith(".prof")) {
-            if (!first) { json += ","; }
-            json += "\"" + filenameStr + "\"";
-            first = false;
+        if (filename) {
+            size_t len = strlen(filename);
+            if (len > 5 && strcmp(filename + len - 5, ".prof") == 0) {
+                if (profileCount < MAX_PROFILES) {
+                    if (len >= MAX_PROFILE_NAME_LEN) {
+                        Serial.printf("GitHub profile name truncated: %s\n", filename);
+                        strncpy(profileNames[profileCount], filename, MAX_PROFILE_NAME_LEN - 1);
+                        profileNames[profileCount][MAX_PROFILE_NAME_LEN - 1] = '\0';
+                    } else {
+                        strcpy(profileNames[profileCount], filename);
+                    }
+                    array.add(profileNames[profileCount]);
+                    profileCount++;
+                }
+            }
         }
     }
-    json += "]";
-    return json;
+    
+    String output;
+    serializeJson(docOut, output);
+    server.send(200, "application/json", output);
 }
 
 bool storage_load_github_profile(const char* profileName) {
@@ -258,11 +326,14 @@ bool storage_load_github_profile(const char* profileName) {
         state_lock(); g_errorProfile = true; state_unlock();
         return false;
     }
+    
     HTTPClient http;
-    String url = String(CFG_GITHUB_PROFILES_BASE_URL) + String(profileName);
+    char url[256];
+    snprintf(url, sizeof(url), "%s%s", CFG_GITHUB_PROFILES_BASE_URL, profileName);
     http.begin(url);
     int httpCode = http.GET();
-    yield(); // <-- POPRAWKA
+    yield();
+    
     if (httpCode != HTTP_CODE_OK) {
         http.end();
         state_lock(); g_errorProfile = true; state_unlock();

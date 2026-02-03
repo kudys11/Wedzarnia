@@ -34,6 +34,11 @@
 // --- LEDC (PWM) ---
 #define LEDC_FREQ 5000
 #define LEDC_RESOLUTION 8
+// Kanały LEDC dla SSR i dymu (każde wyjście PWM potrzebuje osobnego kanału)
+#define LEDC_CHANNEL_SSR1 0
+#define LEDC_CHANNEL_SSR2 1
+#define LEDC_CHANNEL_SSR3 2
+#define LEDC_CHANNEL_SMOKE 3
 
 // --- PID ---
 const double CFG_Kp = 5.0;
@@ -76,6 +81,10 @@ const int SENSOR_ERROR_THRESHOLD = 3;
 
 // --- Profil ---
 #define MAX_STEPS 8
+// Max liczba profili w liście i max długość nazwy profilu
+// Nazwy dłuższe niż MAX_PROFILE_NAME_LEN-1 będą obcinane
+#define MAX_PROFILES 32
+#define MAX_PROFILE_NAME_LEN 64
 
 // ======================================================
 // 3. DEFINICJE TYPÓW I STRUKTUR
