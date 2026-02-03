@@ -77,6 +77,12 @@ const int SENSOR_ERROR_THRESHOLD = 3;
 // --- Profil ---
 #define MAX_STEPS 8
 
+// --- Profile Storage ---
+// Maximum number of profiles that can be listed at once
+#define MAX_PROFILES 32
+// Maximum length of profile name including null terminator
+#define MAX_PROFILE_NAME_LEN 64
+
 // ======================================================
 // 3. DEFINICJE TYPÓW I STRUKTUR
 // ======================================================
