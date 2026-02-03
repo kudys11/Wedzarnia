@@ -34,6 +34,9 @@
 // --- LEDC (PWM) ---
 #define LEDC_FREQ 5000
 #define LEDC_RESOLUTION 8
+#define CHANNEL_SSR1 0
+#define CHANNEL_SSR2 1
+#define CHANNEL_SSR3 2
 
 // --- PID ---
 const double CFG_Kp = 5.0;
@@ -76,6 +79,11 @@ const int SENSOR_ERROR_THRESHOLD = 3;
 
 // --- Profil ---
 #define MAX_STEPS 8
+
+// --- Profile Management ---
+// Profile names longer than MAX_PROFILE_NAME_LEN-1 will be truncated
+#define MAX_PROFILES 32
+#define MAX_PROFILE_NAME_LEN 64
 
 // ======================================================
 // 3. DEFINICJE TYPÓW I STRUKTUR

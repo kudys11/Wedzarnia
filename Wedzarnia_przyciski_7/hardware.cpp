@@ -25,12 +25,17 @@ void hardware_init_pins() {
 	
 }
 void hardware_init_ledc() {
-    if (!ledcAttach(PIN_SSR1, LEDC_FREQ, LEDC_RESOLUTION)) 
-        Serial.println("LEDC SSR1 attach failed!");
-    if (!ledcAttach(PIN_SSR2, LEDC_FREQ, LEDC_RESOLUTION)) 
-        Serial.println("LEDC SSR2 attach failed!");
-    if (!ledcAttach(PIN_SSR3, LEDC_FREQ, LEDC_RESOLUTION)) 
-        Serial.println("LEDC SSR3 attach failed!");
+    // Setup LEDC channels for SSR outputs
+    ledcSetup(CHANNEL_SSR1, LEDC_FREQ, LEDC_RESOLUTION);
+    ledcSetup(CHANNEL_SSR2, LEDC_FREQ, LEDC_RESOLUTION);
+    ledcSetup(CHANNEL_SSR3, LEDC_FREQ, LEDC_RESOLUTION);
+    
+    // Attach pins to LEDC channels
+    ledcAttachPin(PIN_SSR1, CHANNEL_SSR1);
+    ledcAttachPin(PIN_SSR2, CHANNEL_SSR2);
+    ledcAttachPin(PIN_SSR3, CHANNEL_SSR3);
+    
+    // Setup smoke fan LEDC separately (using default channel)
     if (!ledcAttach(PIN_SMOKE_FAN, LEDC_FREQ, LEDC_RESOLUTION)) 
         Serial.println("LEDC SMOKE attach failed!");
     

@@ -20,9 +20,9 @@ static volatile unsigned long fanTimer = 0;
 
 void allOutputsOff() {
     output_lock();
-    ledcWrite(PIN_SSR1, 0);
-    ledcWrite(PIN_SSR2, 0);
-    ledcWrite(PIN_SSR3, 0);
+    ledcWrite(CHANNEL_SSR1, 0);
+    ledcWrite(CHANNEL_SSR2, 0);
+    ledcWrite(CHANNEL_SSR3, 0);
     digitalWrite(PIN_FAN, LOW);
     ledcWrite(PIN_SMOKE_FAN, 0);
     output_unlock();
@@ -113,9 +113,9 @@ void mapPowerToHeaters() {
     heater_unlock();
 
     output_lock();
-    ledcWrite(PIN_SSR1, (int)(p1 * 2.55));
-    ledcWrite(PIN_SSR2, (int)(p2 * 2.55));
-    ledcWrite(PIN_SSR3, (int)(p3 * 2.55));
+    ledcWrite(CHANNEL_SSR1, (int)(p1 * 2.55));
+    ledcWrite(CHANNEL_SSR2, (int)(p2 * 2.55));
+    ledcWrite(CHANNEL_SSR3, (int)(p3 * 2.55));
     output_unlock();
 }
 
