@@ -354,8 +354,13 @@ void web_server_init() {
       server.send(400, "text/plain", "Brak nazwy profilu lub źródła");
       return;
     }
-    const char* profileName = server.arg("name").c_str();
-    const char* source = server.arg("source").c_str();
+    
+    char profileName[MAX_PROFILE_NAME_LEN];
+    char source[16];
+    strncpy(profileName, server.arg("name").c_str(), sizeof(profileName) - 1);
+    profileName[sizeof(profileName) - 1] = '\0';
+    strncpy(source, server.arg("source").c_str(), sizeof(source) - 1);
+    source[sizeof(source) - 1] = '\0';
     
     if (strcmp(source, "sd") == 0) {
       char jsonBuf[2048];
@@ -372,8 +377,13 @@ void web_server_init() {
 
   server.on("/profile/select", HTTP_GET, []() {
     if (server.hasArg("name") && server.hasArg("source")) {
-      const char* profileName = server.arg("name").c_str();
-      const char* source = server.arg("source").c_str();
+      char profileName[MAX_PROFILE_NAME_LEN];
+      char source[16];
+      strncpy(profileName, server.arg("name").c_str(), sizeof(profileName) - 1);
+      profileName[sizeof(profileName) - 1] = '\0';
+      strncpy(source, server.arg("source").c_str(), sizeof(source) - 1);
+      source[sizeof(source) - 1] = '\0';
+      
       bool success = false;
       char fullPath[128];
       
@@ -454,10 +464,14 @@ void web_server_init() {
       server.send(400, "text/plain", "Brak nazwy pliku lub danych.");
       return;
     }
-    const char* filenameArg = server.arg("filename").c_str();
+    
+    char filenameArg[MAX_PROFILE_NAME_LEN];
+    strncpy(filenameArg, server.arg("filename").c_str(), sizeof(filenameArg) - 1);
+    filenameArg[sizeof(filenameArg) - 1] = '\0';
+    
     const char* data = server.arg("data").c_str();
     
-    char filename[128];
+    char filename[MAX_PROFILE_NAME_LEN + 6];
     strncpy(filename, filenameArg, sizeof(filename) - 6);
     filename[sizeof(filename) - 6] = '\0';
     
@@ -468,8 +482,10 @@ void web_server_init() {
     
     // Add .prof extension if not present
     size_t len = strlen(filename);
-    if (len < 5 || strcmp(filename + len - 5, ".prof") != 0) {
-      strncat(filename, ".prof", sizeof(filename) - len - 1);
+    const char* profExt = ".prof";
+    const size_t profExtLen = 5;
+    if (len < profExtLen || strcmp(filename + len - profExtLen, profExt) != 0) {
+      strncat(filename, profExt, sizeof(filename) - len - 1);
     }
     
     char path[150];
