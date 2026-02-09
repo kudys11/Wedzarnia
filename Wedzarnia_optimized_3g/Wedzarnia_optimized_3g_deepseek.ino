@@ -1,4 +1,4 @@
-// Wedzarnia_optimized_v3.3.ino - Zmodernizowany główny plik projektu z poprawkami
+// Wedzarnia_optimized_v3.3.ino - Oczyszczona wersja (bez HA/MQTT/Webhooks)
 #include "config.h"
 #include "state.h"
 #include "hardware.h"
@@ -7,16 +7,14 @@
 #include "tasks.h"
 #include "outputs.h"
 #include "ui.h"
-#include "mqtt.h"
 #include <esp_task_wdt.h>
-#include "webhooks.h"
 
 void setup() {
     Serial.begin(115200);
     delay(100);
     
     Serial.println("\n╔════════════════════════════════════════════╗");
-    Serial.println("║  WEDZARNIA ESP32 v3.3 (UI Fixed Edition)   ║");
+    Serial.println("║  WEDZARNIA ESP32 v3.3 (Cleaned Edition)    ║");
     Serial.println("║  by Wojtek - All Buttons Working           ║");
     Serial.println("╚════════════════════════════════════════════╝\n");
     
@@ -96,27 +94,11 @@ void setup() {
         Serial.printf("AP IP: %s\n", WiFi.softAPIP().toString().c_str());
     }
     
-    #ifdef ENABLE_HOME_ASSISTANT
-    Serial.println("Home Assistant integration ENABLED");
-    Serial.println("Server: " + String(HA_SERVER));
-    #else
-    Serial.println("Home Assistant integration DISABLED");
-    #endif
-    
-    // 13. Inicjalizacja MQTT
-    #ifdef USE_MQTT
-    mqtt_init();
-    #endif
     esp_task_wdt_reset();
     
-    // 14. Inicjalizacja serwera WWW
+    // 13. Inicjalizacja serwera WWW
     web_server_init();
     esp_task_wdt_reset();
-    
-    // 15. Inicjalizacja webhooks (Home Assistant)
-    #ifdef ENABLE_HOME_ASSISTANT
-    ha_webhook_init();
-    #endif
     
     // Sygnał dźwiękowy - gotowe
     buzzerBeep(2, 100, 100);
@@ -138,7 +120,7 @@ void setup() {
     log_msg(LOG_LEVEL_INFO, "║  SETUP COMPLETE - STARTING TASKS           ║");
     log_msg(LOG_LEVEL_INFO, "╚════════════════════════════════════════════╝");
     
-    // 16. Uruchom zadania FreeRTOS
+    // 14. Uruchom zadania FreeRTOS
     tasks_create_all();
     
     // Wyświetl informacje o systemie w logach
