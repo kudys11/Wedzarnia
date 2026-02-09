@@ -1,4 +1,4 @@
-// config.h - Zmodernizowana wersja z dodatkowymi parametrami
+// config.h - Oczyszczona wersja (bez MQTT/HA)
 #pragma once
 #include <Arduino.h>
 #include <WiFi.h>
@@ -59,11 +59,6 @@ constexpr unsigned long CFG_FAN_OFF_DEFAULT_MS = 60000;
 // --- WiFi / Web ---
 constexpr const char* CFG_AP_SSID = "Wedzarnia";
 constexpr const char* CFG_AP_PASS = "12345678";
-
-// --- MQTT ---
-constexpr const char* MQTT_BROKER = "broker.hivemq.com";
-constexpr int MQTT_PORT = 1883;
-constexpr const char* MQTT_TOPIC_PREFIX = "wedzarnia";
 
 // --- WiFi Auto-Reconnect ---
 constexpr unsigned long CFG_WIFI_CHECK_INTERVAL = 5000;
