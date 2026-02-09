@@ -1,4 +1,4 @@
-// sensors.cpp - Zmodernizowana wersja z stałymi przypisaniami czujników
+// sensors.cpp - Oczyszczona wersja (bez HA)
 #include "sensors.h"
 #include "config.h"
 #include "state.h"
@@ -21,7 +21,7 @@ static CachedReading cachedMeat = {25.0, 0, false, 0};
 static int sensorErrorCount = 0;
 
 // STAŁE PRZYPISANIA CZUJNIKÓW
-uint8_t sensorAddresses[2][8];  // ZMIENIONE: tablica 2x8 bajtów
+uint8_t sensorAddresses[2][8];
 bool sensorsIdentified = false;
 int chamberSensorIndex = DEFAULT_CHAMBER_SENSOR;
 int meatSensorIndex = DEFAULT_MEAT_SENSOR;
@@ -87,7 +87,6 @@ void identifyAndAssignSensors() {
         buzzerBeep(3, 200, 100);
     } else {
         log_msg(LOG_LEVEL_WARN, "Need at least 2 sensors for proper assignment");
-        // Spróbuj ponownie później
         sensorsIdentified = false;
     }
 }
@@ -167,7 +166,6 @@ void readTemperature() {
         identifyAndAssignSensors();
         if (!sensorsIdentified) {
             log_msg(LOG_LEVEL_WARN, "Sensors not identified, using defaults");
-            // Użyj domyślnych przypisań tymczasowo
             chamberSensorIndex = DEFAULT_CHAMBER_SENSOR;
             meatSensorIndex = DEFAULT_MEAT_SENSOR;
         }
@@ -251,11 +249,6 @@ void readTemperature() {
             g_currentState = ProcessState::PAUSE_OVERHEAT;
             String alertMsg = "OVERHEAT detected: " + String(g_tChamber, 1) + "°C";
             log_msg(LOG_LEVEL_ERROR, alertMsg);
-            
-            // Wyślij alert do Home Assistant
-            #ifdef ENABLE_HOME_ASSISTANT
-            ha_send_alert("Przegrzanie", alertMsg.c_str());
-            #endif
         }
         state_unlock();
     }
@@ -278,12 +271,6 @@ void checkDoor() {
                 shouldTurnOff = true;
                 shouldBeep = true;
                 log_msg(LOG_LEVEL_INFO, "Door opened - pausing");
-				
-            // Alert do HA
-            #ifdef ENABLE_HOME_ASSISTANT
-            ha_send_alert("Drzwi otwarte", "Proces wstrzymany - drzwi otwarte");
-            #endif
-			
             }
         } else if (!nowOpen && wasOpen) {
             g_doorOpen = false;
