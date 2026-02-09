@@ -1,4 +1,4 @@
-// tasks.cpp - Zmodernizowana wersja z watchdog dla zadań
+// tasks.cpp - Oczyszczona wersja (bez MQTT/HA)
 #include "tasks.h"
 #include "config.h"
 #include "state.h"
@@ -8,7 +8,6 @@
 #include "outputs.h"
 #include "web_server.h"
 #include "wifimanager.h"
-#include "mqtt.h"
 #include <esp_task_wdt.h>
 
 // Watchdog dla zadań
@@ -73,7 +72,6 @@ void taskControl(void* pv) {
         
         process_run_control_logic();
         
-        // Sprawdź własny watchdog
         checkTaskWatchdog(taskIndex);
         
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -134,9 +132,6 @@ void taskWeb(void* pv) {
         taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
         
         web_server_handle_client();
-        #ifdef USE_MQTT
-        mqtt_loop();
-        #endif
         
         checkTaskWatchdog(taskIndex);
         
@@ -169,11 +164,7 @@ void taskMonitor(void* pv) {
     taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
     
     log_msg(LOG_LEVEL_INFO, "Monitor task started");
-	
-	#ifdef ENABLE_HOME_ASSISTANT
-    ha_webhook_init();
-    #endif
-	
+    
     unsigned long lastHeapLog = 0;
     unsigned long lastStatsLog = 0;
     unsigned long lastWatchdogCheck = 0;
@@ -183,11 +174,6 @@ void taskMonitor(void* pv) {
         taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
         
         unsigned long now = millis();
-		
-        // Home Assistant webhook loop
-        #ifdef ENABLE_HOME_ASSISTANT
-        ha_webhook_loop();
-        #endif
         
         // Log heap memory co minutę
         if (now - lastHeapLog > 60000) {
