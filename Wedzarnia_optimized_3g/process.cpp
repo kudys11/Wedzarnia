@@ -1,4 +1,4 @@
-// process.cpp - Zmodernizowana wersja z adaptacyjnym PID
+// process.cpp - Oczyszczona wersja (bez HA)
 #include "process.h"
 #include "config.h"
 #include "state.h"
@@ -143,7 +143,7 @@ static void adaptPidParameters() {
     adaptivePid.lastAdaptation = now;
 }
 
-// Predykcyjne sterowanie wentylatorem - ZMIEŃ Z "static" NA "void"
+// Predykcyjne sterowanie wentylatorem
 void predictiveFanControl() {
     // Zbierz historię temperatury
     double currentTemp = 0;
@@ -323,11 +323,6 @@ void process_start_auto() {
     }
     
     log_msg(LOG_LEVEL_INFO, "AUTO mode started");
-	
-    #ifdef ENABLE_HOME_ASSISTANT
-    ha_send_alert("Start AUTO", "Rozpoczęto proces automatyczny");
-    ha_send_state("running_auto");
-    #endif
 }
 
 void process_start_manual() {
@@ -355,11 +350,6 @@ void process_start_manual() {
     }
     
     log_msg(LOG_LEVEL_INFO, "MANUAL mode started");
-    
-    #ifdef ENABLE_HOME_ASSISTANT
-    ha_send_alert("Start MANUAL", "Rozpoczęto proces manualny");
-    ha_send_state("running_manual");
-    #endif
 }
 
 void process_resume() {
@@ -432,12 +422,8 @@ void process_run_control_logic() {
         case ProcessState::PAUSE_SENSOR:
         case ProcessState::PAUSE_OVERHEAT:
         case ProcessState::PAUSE_USER:
-		    allOutputsOff();
-            #ifdef ENABLE_HOME_ASSISTANT
-            ha_send_alert("Proces zakończony", "Proces został zakończony");
-            ha_send_state("idle");
-            #endif
-    break;
+            allOutputsOff();
+            break;
         case ProcessState::ERROR_PROFILE:
             allOutputsOff();
             break;
