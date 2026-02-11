@@ -97,6 +97,11 @@ static void updateText(int16_t x, int16_t y, int16_t w, int16_t h,
         display.setCursor(x, y);
         display.setTextColor(color);
         display.print(newText);
+        
+        // Debug log
+        log_msg(LOG_LEVEL_DEBUG, 
+                String("updateText: ") + oldText + " -> " + newText + 
+                " size:" + textSize + " at (" + x + "," + y + ")");
     }
 }
 
@@ -945,20 +950,27 @@ void ui_update_display() {
                 display.print("EXIT - Zatrzymaj");
 
             } else if (st == ProcessState::RUNNING_MANUAL) {
+            // Czyszczenie obszaru czasów
+            display.fillRect(0, 80, SCREEN_WIDTH, 40, ST77XX_BLACK);
+
                 if(force_redraw || displayCache.needsRedraw) { 
                     display.setCursor(0, 90); 
                     display.print("Czas pracy:"); 
                 }
                 unsigned long elapsedSec = (millis() - processStartTime) / 1000;
                 formatTime(buf, sizeof(buf), elapsedSec);
-                updateTextAutoSize(10, 105, 120, 
-                                  displayCache.elapsedStr, 
-                                  buf, 
-                                  ST77XX_GREEN);
-                displayCache.elapsedStr = buf;
+
+            // Użyj updateText zamiast updateTextAutoSize dla uniknięcia migania
+            updateText(10, 105, 120, 8, 
+                      displayCache.elapsedStr, 
+                      buf, 
+                      ST77XX_GREEN, 1);
+            displayCache.elapsedStr = buf;
                 
-                display.setCursor(5, 145);
-                display.print("EXIT - Zatrzymaj");
+            // Czyszczenie tylko obszaru instrukcji (unikanie rysowania dwóch razy)
+            display.fillRect(0, 140, SCREEN_WIDTH, 20, ST77XX_BLACK);
+            display.setCursor(5, 145);
+            display.print("EXIT - Zatrzymaj");
             }
         } else {
             // Ekran glowny (IDLE)
