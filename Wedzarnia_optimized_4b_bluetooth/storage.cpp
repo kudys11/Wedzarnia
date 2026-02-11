@@ -52,7 +52,7 @@ static bool parseProfileLine(char* line, Step& step) {
     }
     
     if (fieldCount < 10) {
-        log_msg(LOG_LEVEL_WARN, "Invalid profile line - not enough fields");
+        log_msg(APP_LOG_LEVEL_WARN, "Invalid profile line - not enough fields");
         return false;
     }
     
@@ -80,7 +80,7 @@ bool storage_load_profile() {
         return storage_load_github_profile(profileName.c_str());
     } else {
         if (!SD.exists(lastProfilePath)) {
-            log_msg(LOG_LEVEL_ERROR, "Profile not found on SD: " + String(lastProfilePath));
+            log_msg(APP_LOG_LEVEL_ERROR, "Profile not found on SD: " + String(lastProfilePath));
             if (state_lock()) {
                 g_errorProfile = true;
                 state_unlock();
@@ -93,7 +93,7 @@ bool storage_load_profile() {
         
         File f = SD.open(lastProfilePath, "r");
         if (!f) {
-            log_msg(LOG_LEVEL_ERROR, "Cannot open profile file");
+            log_msg(APP_LOG_LEVEL_ERROR, "Cannot open profile file");
             if (state_lock()) {
                 g_errorProfile = true;
                 state_unlock();
@@ -128,9 +128,9 @@ bool storage_load_profile() {
         }
         
         if (g_errorProfile) {
-            log_msg(LOG_LEVEL_ERROR, "Failed to load profile: " + String(lastProfilePath));
+            log_msg(APP_LOG_LEVEL_ERROR, "Failed to load profile: " + String(lastProfilePath));
         } else {
-            log_msg(LOG_LEVEL_INFO, "Profile loaded from SD: " + String(g_stepCount) + " steps");
+            log_msg(APP_LOG_LEVEL_INFO, "Profile loaded from SD: " + String(g_stepCount) + " steps");
         }
         
         return !g_errorProfile;
@@ -140,7 +140,7 @@ bool storage_load_profile() {
 void storage_load_config_nvs() {
     nvs_handle_t nvsHandle;
     if (nvs_open("wedzarnia", NVS_READONLY, &nvsHandle) != ESP_OK) {
-        log_msg(LOG_LEVEL_INFO, "No saved config in NVS");
+        log_msg(APP_LOG_LEVEL_INFO, "No saved config in NVS");
         return;
     }
     
@@ -178,7 +178,7 @@ void storage_load_config_nvs() {
     }
     
     nvs_close(nvsHandle);
-    log_msg(LOG_LEVEL_INFO, "NVS config loaded");
+    log_msg(APP_LOG_LEVEL_INFO, "NVS config loaded");
 }
 
 static void nvs_save_generic(std::function<void(nvs_handle_t)> action) {
@@ -201,7 +201,7 @@ void storage_save_wifi_nvs(const char* ssid, const char* pass) {
         nvs_set_str(handle, "wifi_pass", wifiStaPass);
     });
     
-    log_msg(LOG_LEVEL_INFO, "WiFi credentials saved to NVS");
+    log_msg(APP_LOG_LEVEL_INFO, "WiFi credentials saved to NVS");
 }
 
 void storage_save_profile_path_nvs(const char* path) {
@@ -212,7 +212,7 @@ void storage_save_profile_path_nvs(const char* path) {
         nvs_set_str(handle, "profile", lastProfilePath);
     });
     
-    log_msg(LOG_LEVEL_INFO, "Profile path saved: " + String(path));
+    log_msg(APP_LOG_LEVEL_INFO, "Profile path saved: " + String(path));
 }
 
 void storage_save_manual_settings_nvs() {
@@ -231,7 +231,7 @@ void storage_save_manual_settings_nvs() {
         nvs_set_i32(handle, "manual_fan", fm);
     });
     
-    log_msg(LOG_LEVEL_DEBUG, "Manual settings saved to NVS");
+    log_msg(APP_LOG_LEVEL_DEBUG, "Manual settings saved to NVS");
 }
 
 String storage_list_profiles_json() {
@@ -240,7 +240,7 @@ String storage_list_profiles_json() {
     
     File root = SD.open("/profiles");
     if (!root || !root.isDirectory()) {
-        log_msg(LOG_LEVEL_WARN, "Cannot open /profiles directory");
+        log_msg(APP_LOG_LEVEL_WARN, "Cannot open /profiles directory");
         return "[]";
     }
     
@@ -263,15 +263,15 @@ String storage_list_profiles_json() {
 }
 
 bool storage_reinit_sd() {
-    log_msg(LOG_LEVEL_INFO, "Re-initializing SD card...");
+    log_msg(APP_LOG_LEVEL_INFO, "Re-initializing SD card...");
     SD.end();
     delay(200);
     
     if (SD.begin(PIN_SD_CS)) {
-        log_msg(LOG_LEVEL_INFO, "SD card re-initialized successfully");
+        log_msg(APP_LOG_LEVEL_INFO, "SD card re-initialized successfully");
         return true;
     } else {
-        log_msg(LOG_LEVEL_ERROR, "Failed to re-initialize SD card");
+        log_msg(APP_LOG_LEVEL_ERROR, "Failed to re-initialize SD card");
         return false;
     }
 }
@@ -279,13 +279,13 @@ bool storage_reinit_sd() {
 String storage_get_profile_as_json(const char* profileName) {
     String path = "/profiles/" + String(profileName);
     if (!SD.exists(path)) {
-        log_msg(LOG_LEVEL_WARN, "Profile not found: " + path);
+        log_msg(APP_LOG_LEVEL_WARN, "Profile not found: " + path);
         return "[]";
     }
     
     File f = SD.open(path, "r");
     if (!f) {
-        log_msg(LOG_LEVEL_ERROR, "Cannot open profile: " + path);
+        log_msg(APP_LOG_LEVEL_ERROR, "Cannot open profile: " + path);
         return "[]";
     }
     
@@ -337,7 +337,7 @@ String storage_get_profile_as_json(const char* profileName) {
 
 String storage_list_github_profiles_json() {
     if (WiFi.status() != WL_CONNECTED) {
-        log_msg(LOG_LEVEL_WARN, "WiFi not connected - cannot list GitHub profiles");
+        log_msg(APP_LOG_LEVEL_WARN, "WiFi not connected - cannot list GitHub profiles");
         return "[\"Brak WiFi\"]";
     }
     
@@ -348,7 +348,7 @@ String storage_list_github_profiles_json() {
     int httpCode = http.GET();
     
     if (httpCode != HTTP_CODE_OK) {
-        log_msg(LOG_LEVEL_ERROR, "GitHub API error: " + String(httpCode));
+        log_msg(APP_LOG_LEVEL_ERROR, "GitHub API error: " + String(httpCode));
         http.end();
         return "[\"Blad API GitHub\"]";
     }
@@ -358,7 +358,7 @@ String storage_list_github_profiles_json() {
     http.end();
     
     if (error) {
-        log_msg(LOG_LEVEL_ERROR, "JSON parse error: " + String(error.c_str()));
+        log_msg(APP_LOG_LEVEL_ERROR, "JSON parse error: " + String(error.c_str()));
         return "[\"Blad parsowania\"]";
     }
     
@@ -380,7 +380,7 @@ String storage_list_github_profiles_json() {
 
 bool storage_load_github_profile(const char* profileName) {
     if (WiFi.status() != WL_CONNECTED) {
-        log_msg(LOG_LEVEL_ERROR, "WiFi not connected - cannot load from GitHub");
+        log_msg(APP_LOG_LEVEL_ERROR, "WiFi not connected - cannot load from GitHub");
         if (state_lock()) {
             g_errorProfile = true;
             state_unlock();
@@ -390,14 +390,14 @@ bool storage_load_github_profile(const char* profileName) {
     
     HTTPClient http;
     String url = String(CFG_GITHUB_PROFILES_BASE_URL) + String(profileName);
-    log_msg(LOG_LEVEL_INFO, "Loading profile from: " + url);
+    log_msg(APP_LOG_LEVEL_INFO, "Loading profile from: " + url);
     
     http.begin(url);
     http.setTimeout(10000);
     int httpCode = http.GET();
     
     if (httpCode != HTTP_CODE_OK) {
-        log_msg(LOG_LEVEL_ERROR, "GitHub download error: " + String(httpCode));
+        log_msg(APP_LOG_LEVEL_ERROR, "GitHub download error: " + String(httpCode));
         http.end();
         if (state_lock()) {
             g_errorProfile = true;
@@ -434,9 +434,9 @@ bool storage_load_github_profile(const char* profileName) {
     }
     
     if (g_errorProfile) {
-        log_msg(LOG_LEVEL_ERROR, "Failed to load profile from GitHub: " + String(profileName));
+        log_msg(APP_LOG_LEVEL_ERROR, "Failed to load profile from GitHub: " + String(profileName));
     } else {
-        log_msg(LOG_LEVEL_INFO, "Profile '" + String(profileName) + "' loaded from GitHub: " + 
+        log_msg(APP_LOG_LEVEL_INFO, "Profile '" + String(profileName) + "' loaded from GitHub: " + 
                 String(g_stepCount) + " steps");
     }
     
@@ -454,14 +454,14 @@ void storage_backup_config() {
     // Utwórz katalog backup jeśli nie istnieje
     if (!SD.exists("/backup")) {
         if (!SD.mkdir("/backup")) {
-            log_msg(LOG_LEVEL_ERROR, "Failed to create backup directory");
+            log_msg(APP_LOG_LEVEL_ERROR, "Failed to create backup directory");
             return;
         }
     }
     
     File backupFile = SD.open(backupPath.c_str(), FILE_WRITE);
     if (!backupFile) {
-        log_msg(LOG_LEVEL_ERROR, "Failed to create backup file");
+        log_msg(APP_LOG_LEVEL_ERROR, "Failed to create backup file");
         return;
     }
     
@@ -473,7 +473,7 @@ void storage_backup_config() {
     serializeJson(doc, backupFile);
     backupFile.close();
     
-    log_msg(LOG_LEVEL_INFO, "Config backup created: " + backupPath);
+    log_msg(APP_LOG_LEVEL_INFO, "Config backup created: " + backupPath);
     
     // Usuń najstarsze backupy jeśli jest ich za dużo
     cleanupOldBackups();
@@ -504,7 +504,7 @@ void cleanupOldBackups() {
         int filesToDelete = backupFiles.size() - MAX_BACKUPS;
         for (int i = 0; i < filesToDelete; i++) {
             if (SD.remove(backupFiles[i].c_str())) {
-                log_msg(LOG_LEVEL_INFO, "Deleted old backup: " + backupFiles[i]);
+                log_msg(APP_LOG_LEVEL_INFO, "Deleted old backup: " + backupFiles[i]);
             }
         }
     }
@@ -512,13 +512,13 @@ void cleanupOldBackups() {
 
 bool storage_restore_backup(const char* backupPath) {
     if (!SD.exists(backupPath)) {
-        log_msg(LOG_LEVEL_ERROR, "Backup file not found: " + String(backupPath));
+        log_msg(APP_LOG_LEVEL_ERROR, "Backup file not found: " + String(backupPath));
         return false;
     }
     
     File backupFile = SD.open(backupPath, "r");
     if (!backupFile) {
-        log_msg(LOG_LEVEL_ERROR, "Cannot open backup file");
+        log_msg(APP_LOG_LEVEL_ERROR, "Cannot open backup file");
         return false;
     }
     
@@ -527,7 +527,7 @@ bool storage_restore_backup(const char* backupPath) {
     backupFile.close();
     
     if (error) {
-        log_msg(LOG_LEVEL_ERROR, "Failed to parse backup JSON: " + String(error.c_str()));
+        log_msg(APP_LOG_LEVEL_ERROR, "Failed to parse backup JSON: " + String(error.c_str()));
         return false;
     }
     
@@ -537,19 +537,19 @@ bool storage_restore_backup(const char* backupPath) {
     
     if (profilePath) {
         strncpy(lastProfilePath, profilePath, sizeof(lastProfilePath) - 1);
-        log_msg(LOG_LEVEL_INFO, "Restored profile path: " + String(profilePath));
+        log_msg(APP_LOG_LEVEL_INFO, "Restored profile path: " + String(profilePath));
     }
     
     if (wifiSsid && strlen(wifiSsid) > 0) {
         strncpy(wifiStaSsid, wifiSsid, sizeof(wifiStaSsid) - 1);
-        log_msg(LOG_LEVEL_INFO, "Restored WiFi SSID: " + String(wifiSsid));
+        log_msg(APP_LOG_LEVEL_INFO, "Restored WiFi SSID: " + String(wifiSsid));
     }
     
     // Zapisz do NVS
     storage_save_profile_path_nvs(lastProfilePath);
     storage_save_wifi_nvs(wifiStaSsid, wifiStaPass);
     
-    log_msg(LOG_LEVEL_INFO, "Backup restored (timestamp: " + String(timestamp) + ")");
+    log_msg(APP_LOG_LEVEL_INFO, "Backup restored (timestamp: " + String(timestamp) + ")");
     return true;
 }
 
