@@ -44,7 +44,7 @@ ProcessStats g_processStats = {0, 0, 0, 0, 0.0, 0, 0, 0};
 bool state_lock(TickType_t timeout_ms) {
     if (!stateMutex) return false;
     if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-        log_msg(LOG_LEVEL_WARN, "state_lock timeout!");
+        log_msg(APP_LOG_LEVEL_WARN, "state_lock timeout!");
         return false;
     }
     return true;
@@ -57,7 +57,7 @@ void state_unlock() {
 bool output_lock(TickType_t timeout_ms) {
     if (!outputMutex) return false;
     if (xSemaphoreTake(outputMutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-        log_msg(LOG_LEVEL_WARN, "output_lock timeout!");
+        log_msg(APP_LOG_LEVEL_WARN, "output_lock timeout!");
         return false;
     }
     return true;
@@ -70,7 +70,7 @@ void output_unlock() {
 bool heater_lock(TickType_t timeout_ms) {
     if (!heaterMutex) return false;
     if (xSemaphoreTake(heaterMutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-        log_msg(LOG_LEVEL_WARN, "heater_lock timeout!");
+        log_msg(APP_LOG_LEVEL_WARN, "heater_lock timeout!");
         return false;
     }
     return true;
@@ -86,7 +86,7 @@ void init_state() {
     heaterMutex = xSemaphoreCreateMutex();
     
     if (!stateMutex || !outputMutex || !heaterMutex) {
-        log_msg(LOG_LEVEL_ERROR, "FATAL: Mutex creation failed!");
+        log_msg(APP_LOG_LEVEL_ERROR, "FATAL: Mutex creation failed!");
         while (1) delay(1000);
     }
 
@@ -103,5 +103,5 @@ void init_state() {
     g_processStats.avgTemp = 0.0;
     g_processStats.lastUpdate = millis();
     
-    log_msg(LOG_LEVEL_INFO, "State initialized successfully");
+    log_msg(APP_LOG_LEVEL_INFO, "State initialized successfully");
 }
