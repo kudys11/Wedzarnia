@@ -133,7 +133,7 @@ static void adaptPidParameters() {
         pid.SetTunings(adaptivePid.currentKp, adaptivePid.currentKi, adaptivePid.currentKd);
         
         if (adaptivePid.lastAdaptation > 0) { // Nie loguj przy pierwszym uruchomieniu
-            log_msg(LOG_LEVEL_DEBUG, "PID adapted: Kp=" + String(adaptivePid.currentKp, 2) + 
+            log_msg(APP_LOG_LEVEL_DEBUG, "PID adapted: Kp=" + String(adaptivePid.currentKp, 2) + 
                    ", Ki=" + String(adaptivePid.currentKi, 2) + 
                    ", Kd=" + String(adaptivePid.currentKd, 2) +
                    ", var=" + String(errorVariance, 2));
@@ -177,11 +177,11 @@ void predictiveFanControl() {
                 if (trend > 0.5) { // Temperatura szybko rośnie
                     g_fanOnTime = min((unsigned long)(g_fanOnTime * 1.5), 30000UL); // Max 30s ON
                     g_fanOffTime = max((unsigned long)(g_fanOffTime * 0.7), 10000UL); // Min 10s OFF
-                    log_msg(LOG_LEVEL_DEBUG, "Fan: temp rising fast, increasing ON time");
+                    log_msg(APP_LOG_LEVEL_DEBUG, "Fan: temp rising fast, increasing ON time");
                 } else if (trend < -0.2) { // Temperatura spada
                     g_fanOnTime = max((unsigned long)(g_fanOnTime * 0.7), 5000UL); // Min 5s ON
                     g_fanOffTime = min((unsigned long)(g_fanOffTime * 1.3), 120000UL); // Max 120s OFF
-                    log_msg(LOG_LEVEL_DEBUG, "Fan: temp falling, decreasing ON time");
+                    log_msg(APP_LOG_LEVEL_DEBUG, "Fan: temp falling, decreasing ON time");
                 } else if (fabs(trend) < 0.1 && fabs(g_tChamber - g_tSet) < 3.0) {
                     // Stabilna temperatura w pobliżu setpointu
                     g_fanOnTime = 10000UL; // Powrót do domyślnych
@@ -200,7 +200,7 @@ static void handleAutoMode() {
     state_unlock();
     
     if (step < 0 || step >= count) {
-        log_msg(LOG_LEVEL_ERROR, "Invalid step in AUTO mode: " + String(step));
+        log_msg(APP_LOG_LEVEL_ERROR, "Invalid step in AUTO mode: " + String(step));
         return;
     }
 
@@ -227,11 +227,11 @@ static void handleAutoMode() {
             }
             allOutputsOff();
             buzzerBeep(3, 200, 200);
-            log_msg(LOG_LEVEL_INFO, "Profile completed!");
+            log_msg(APP_LOG_LEVEL_INFO, "Profile completed!");
         } else {
             applyCurrentStep();
             buzzerBeep(2, 100, 100);
-            log_msg(LOG_LEVEL_INFO, "Advanced to step " + String(g_currentStep));
+            log_msg(APP_LOG_LEVEL_INFO, "Advanced to step " + String(g_currentStep));
         }
     }
     
@@ -276,7 +276,7 @@ void applyCurrentStep() {
     state_unlock();
     
     if (step < 0 || step >= count) {
-        log_msg(LOG_LEVEL_ERROR, "Cannot apply step - invalid index: " + String(step));
+        log_msg(APP_LOG_LEVEL_ERROR, "Cannot apply step - invalid index: " + String(step));
         return;
     }
     
@@ -293,7 +293,7 @@ void applyCurrentStep() {
     }
 
     g_stepStartTime = millis();
-    log_msg(LOG_LEVEL_INFO, "Step " + String(step) + ": " + String(s.name) + 
+    log_msg(APP_LOG_LEVEL_INFO, "Step " + String(step) + ": " + String(s.name) + 
             ", T=" + String(s.tSet, 1) + ", P=" + String(s.powerMode));
     ui_force_redraw();
 }
@@ -322,7 +322,7 @@ void process_start_auto() {
         state_unlock();
     }
     
-    log_msg(LOG_LEVEL_INFO, "AUTO mode started");
+    log_msg(APP_LOG_LEVEL_INFO, "AUTO mode started");
 }
 
 void process_start_manual() {
@@ -349,7 +349,7 @@ void process_start_manual() {
         state_unlock();
     }
     
-    log_msg(LOG_LEVEL_INFO, "MANUAL mode started");
+    log_msg(APP_LOG_LEVEL_INFO, "MANUAL mode started");
 }
 
 void process_resume() {
@@ -358,7 +358,7 @@ void process_resume() {
         g_currentState = ProcessState::SOFT_RESUME;
         state_unlock();
     }
-    log_msg(LOG_LEVEL_INFO, "Process resuming...");
+    log_msg(APP_LOG_LEVEL_INFO, "Process resuming...");
 }
 
 void process_run_control_logic() {
@@ -379,7 +379,7 @@ void process_run_control_logic() {
         }
         allOutputsOff();
         buzzerBeep(4, 150, 150);
-        log_msg(LOG_LEVEL_WARN, "Max process time reached!");
+        log_msg(APP_LOG_LEVEL_WARN, "Max process time reached!");
         return;
     }
 
@@ -413,7 +413,7 @@ void process_run_control_logic() {
                         : ProcessState::RUNNING_MANUAL;
                     state_unlock();
                 }
-                log_msg(LOG_LEVEL_INFO, "Process resumed from pause");
+                log_msg(APP_LOG_LEVEL_INFO, "Process resumed from pause");
             }
             break;
 
@@ -434,14 +434,14 @@ void process_force_next_step() {
     if (!state_lock()) return;
     
     if (g_currentState != ProcessState::RUNNING_AUTO) {
-        log_msg(LOG_LEVEL_WARN, "Cannot skip step - not in AUTO mode");
+        log_msg(APP_LOG_LEVEL_WARN, "Cannot skip step - not in AUTO mode");
         state_unlock();
         return;
     }
     
     int nextStep = g_currentStep + 1;
     if (nextStep >= g_stepCount) {
-        log_msg(LOG_LEVEL_WARN, "Cannot skip step - already at last step");
+        log_msg(APP_LOG_LEVEL_WARN, "Cannot skip step - already at last step");
         state_unlock();
         return;
     }
@@ -450,7 +450,7 @@ void process_force_next_step() {
     
     g_currentStep = nextStep;
     applyCurrentStep();
-    log_msg(LOG_LEVEL_INFO, "Step skipped to " + String(nextStep));
+    log_msg(APP_LOG_LEVEL_INFO, "Step skipped to " + String(nextStep));
     buzzerBeep(1, 100, 0);
 }
 
@@ -477,5 +477,5 @@ void resetAdaptivePid() {
     adaptivePid.historyIndex = 0;
     adaptivePid.lastAdaptation = 0;
     
-    log_msg(LOG_LEVEL_INFO, "Adaptive PID reset to defaults");
+    log_msg(APP_LOG_LEVEL_INFO, "Adaptive PID reset to defaults");
 }
