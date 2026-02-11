@@ -27,33 +27,33 @@ void hardware_init_pins() {
     pinMode(PIN_BTN_ENTER, INPUT_PULLUP);
     pinMode(PIN_BTN_EXIT, INPUT_PULLUP);
     
-    log_msg(LOG_LEVEL_INFO, "GPIO pins initialized");
+    log_msg(APP_LOG_LEVEL_INFO, "GPIO pins initialized");
 }
 
 void hardware_init_ledc() {
     bool success = true;
     
     if (!ledcAttach(PIN_SSR1, LEDC_FREQ, LEDC_RESOLUTION)) {
-        log_msg(LOG_LEVEL_ERROR, "LEDC SSR1 attach failed!");
+        log_msg(APP_LOG_LEVEL_ERROR, "LEDC SSR1 attach failed!");
         success = false;
     }
     if (!ledcAttach(PIN_SSR2, LEDC_FREQ, LEDC_RESOLUTION)) {
-        log_msg(LOG_LEVEL_ERROR, "LEDC SSR2 attach failed!");
+        log_msg(APP_LOG_LEVEL_ERROR, "LEDC SSR2 attach failed!");
         success = false;
     }
     if (!ledcAttach(PIN_SSR3, LEDC_FREQ, LEDC_RESOLUTION)) {
-        log_msg(LOG_LEVEL_ERROR, "LEDC SSR3 attach failed!");
+        log_msg(APP_LOG_LEVEL_ERROR, "LEDC SSR3 attach failed!");
         success = false;
     }
     if (!ledcAttach(PIN_SMOKE_FAN, LEDC_FREQ, LEDC_RESOLUTION)) {
-        log_msg(LOG_LEVEL_ERROR, "LEDC SMOKE attach failed!");
+        log_msg(APP_LOG_LEVEL_ERROR, "LEDC SMOKE attach failed!");
         success = false;
     }
     
     allOutputsOff();
     
     if (success) {
-        log_msg(LOG_LEVEL_INFO, "LEDC/PWM initialized");
+        log_msg(APP_LOG_LEVEL_INFO, "LEDC/PWM initialized");
     }
 }
 
@@ -63,10 +63,10 @@ void hardware_init_sensors() {
     sensors.setResolution(12);
     
     int deviceCount = sensors.getDeviceCount();
-    log_msg(LOG_LEVEL_INFO, "Found " + String(deviceCount) + " DS18B20 sensor(s)");
+    log_msg(APP_LOG_LEVEL_INFO, "Found " + String(deviceCount) + " DS18B20 sensor(s)");
     
     if (deviceCount == 0) {
-        log_msg(LOG_LEVEL_WARN, "No temperature sensors found!");
+        log_msg(APP_LOG_LEVEL_WARN, "No temperature sensors found!");
     }
 }
 
@@ -82,7 +82,7 @@ void hardware_init_display() {
     display.println("\n   v4.0 by Wojtek");
     display.println("\n   Inicjalizacja...");
     delay(1500); // Skrócone z 2000ms
-    log_msg(LOG_LEVEL_INFO, "Display initialized");
+    log_msg(APP_LOG_LEVEL_INFO, "Display initialized");
 }
 
 void hardware_init_sd() {
@@ -90,10 +90,10 @@ void hardware_init_sd() {
     const unsigned long RETRY_DELAY_MS = 300;
     const unsigned long INIT_TIMEOUT_MS = 2000;
     
-    log_msg(LOG_LEVEL_INFO, "Initializing SD card...");
+    log_msg(APP_LOG_LEVEL_INFO, "Initializing SD card...");
     
     for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        log_msg(LOG_LEVEL_INFO, "SD init attempt " + String(attempt) + "/" + String(MAX_RETRIES));
+        log_msg(APP_LOG_LEVEL_INFO, "SD init attempt " + String(attempt) + "/" + String(MAX_RETRIES));
         
         unsigned long startTime = millis();
         bool initSuccess = false;
@@ -111,7 +111,7 @@ void hardware_init_sd() {
             // Sprawdź typ karty
             uint8_t cardType = SD.cardType();
             if (cardType == CARD_NONE) {
-                log_msg(LOG_LEVEL_WARN, "SD card detected but type is NONE");
+                log_msg(APP_LOG_LEVEL_WARN, "SD card detected but type is NONE");
                 SD.end();
                 delay(RETRY_DELAY_MS);
                 continue;
@@ -119,17 +119,17 @@ void hardware_init_sd() {
             
             // Sprawdź czy można odczytać kartę
             uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-            log_msg(LOG_LEVEL_INFO, "SD card OK: " + String(cardSize) + " MB");
+            log_msg(APP_LOG_LEVEL_INFO, "SD card OK: " + String(cardSize) + " MB");
             
             // Sprawdź/utwórz katalogi
             if (!SD.exists("/profiles")) {
                 if (SD.mkdir("/profiles")) {
-                    log_msg(LOG_LEVEL_INFO, "Created /profiles directory");
+                    log_msg(APP_LOG_LEVEL_INFO, "Created /profiles directory");
                 } else {
-                    log_msg(LOG_LEVEL_WARN, "Failed to create /profiles directory");
+                    log_msg(APP_LOG_LEVEL_WARN, "Failed to create /profiles directory");
                 }
             } else {
-                log_msg(LOG_LEVEL_INFO, "/profiles directory exists");
+                log_msg(APP_LOG_LEVEL_INFO, "/profiles directory exists");
             }
             
             // Inicjalizuj system logowania
@@ -140,15 +140,15 @@ void hardware_init_sd() {
         
         // Niepowodzenie - poczekaj przed kolejną próbą
         if (attempt < MAX_RETRIES) {
-            log_msg(LOG_LEVEL_WARN, "SD init failed, retrying in " + String(RETRY_DELAY_MS) + "ms...");
+            log_msg(APP_LOG_LEVEL_WARN, "SD init failed, retrying in " + String(RETRY_DELAY_MS) + "ms...");
             SD.end();
             delay(RETRY_DELAY_MS);
         }
     }
     
     // Wszystkie próby nieudane
-    log_msg(LOG_LEVEL_ERROR, "SD card initialization failed after " + String(MAX_RETRIES) + " attempts");
-    log_msg(LOG_LEVEL_ERROR, "System will run in MANUAL MODE ONLY");
+    log_msg(APP_LOG_LEVEL_ERROR, "SD card initialization failed after " + String(MAX_RETRIES) + " attempts");
+    log_msg(APP_LOG_LEVEL_ERROR, "System will run in MANUAL MODE ONLY");
     
     if (state_lock()) {
         g_errorProfile = true;
@@ -161,12 +161,12 @@ void hardware_init_sd() {
 void nvs_init() {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        log_msg(LOG_LEVEL_INFO, "Erasing NVS flash...");
+        log_msg(APP_LOG_LEVEL_INFO, "Erasing NVS flash...");
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
-    log_msg(LOG_LEVEL_INFO, "NVS initialized");
+    log_msg(APP_LOG_LEVEL_INFO, "NVS initialized");
 }
 
 void hardware_init_wifi() {
@@ -178,9 +178,9 @@ void hardware_init_wifi() {
 void initLoggingSystem() {
     if (!SD.exists("/logs")) {
         if (SD.mkdir("/logs")) {
-            log_msg(LOG_LEVEL_INFO, "Created /logs directory");
+            log_msg(APP_LOG_LEVEL_INFO, "Created /logs directory");
         } else {
-            log_msg(LOG_LEVEL_ERROR, "Failed to create /logs directory");
+            log_msg(APP_LOG_LEVEL_ERROR, "Failed to create /logs directory");
             return;
         }
     }
@@ -209,9 +209,9 @@ void initLoggingSystem() {
         logFile.printf("Timestamp: %lu\n", millis() / 1000);
         logFile.printf("Free heap: %d\n", ESP.getFreeHeap());
         logFile.close();
-        log_msg(LOG_LEVEL_INFO, "Log file created: " + String(filename));
+        log_msg(APP_LOG_LEVEL_INFO, "Log file created: " + String(filename));
     } else {
-        log_msg(LOG_LEVEL_ERROR, "Failed to create log file");
+        log_msg(APP_LOG_LEVEL_ERROR, "Failed to create log file");
     }
 }
 
@@ -248,9 +248,9 @@ void deleteOldestLog(const char* dirPath) {
     
     if (oldestFile.length() > 0 && oldestTime != ULONG_MAX) {
         if (SD.remove(oldestFile.c_str())) {
-            log_msg(LOG_LEVEL_INFO, "Deleted oldest log: " + oldestFile);
+            log_msg(APP_LOG_LEVEL_INFO, "Deleted oldest log: " + oldestFile);
         } else {
-            log_msg(LOG_LEVEL_ERROR, "Failed to delete: " + oldestFile);
+            log_msg(APP_LOG_LEVEL_ERROR, "Failed to delete: " + oldestFile);
         }
     }
 }
@@ -263,12 +263,12 @@ void logToFile(const String& message) {
 }
 
 void runStartupSelfTest() {
-    log_msg(LOG_LEVEL_INFO, "Running startup self-test...");
+    log_msg(APP_LOG_LEVEL_INFO, "Running startup self-test...");
     
     // ===========================================
     // TEST 1: PRZYCISKI - Uproszczona wersja
     // ===========================================
-    log_msg(LOG_LEVEL_INFO, "=== BUTTONS TEST (Quick Check) ===");
+    log_msg(APP_LOG_LEVEL_INFO, "=== BUTTONS TEST (Quick Check) ===");
     
     bool upOk = (digitalRead(PIN_BTN_UP) == HIGH);      // Pull-up -> HIGH gdy nieprzycisniete
     bool downOk = (digitalRead(PIN_BTN_DOWN) == HIGH);
@@ -276,19 +276,19 @@ void runStartupSelfTest() {
     bool exitOk = (digitalRead(PIN_BTN_EXIT) == HIGH);
     bool doorOk = true; // Drzwi mogą być otwarte lub zamknięte
     
-    log_msg(LOG_LEVEL_INFO, "UP: " + String(upOk ? "OK (HIGH)" : "PRESSED or ERROR"));
-    log_msg(LOG_LEVEL_INFO, "DOWN: " + String(downOk ? "OK (HIGH)" : "PRESSED or ERROR"));
-    log_msg(LOG_LEVEL_INFO, "ENTER: " + String(enterOk ? "OK (HIGH)" : "PRESSED or ERROR"));
-    log_msg(LOG_LEVEL_INFO, "EXIT: " + String(exitOk ? "OK (HIGH)" : "PRESSED or ERROR"));
-    log_msg(LOG_LEVEL_INFO, "DOOR: " + String(digitalRead(PIN_DOOR) ? "OPEN" : "CLOSED"));
+    log_msg(APP_LOG_LEVEL_INFO, "UP: " + String(upOk ? "OK (HIGH)" : "PRESSED or ERROR"));
+    log_msg(APP_LOG_LEVEL_INFO, "DOWN: " + String(downOk ? "OK (HIGH)" : "PRESSED or ERROR"));
+    log_msg(APP_LOG_LEVEL_INFO, "ENTER: " + String(enterOk ? "OK (HIGH)" : "PRESSED or ERROR"));
+    log_msg(APP_LOG_LEVEL_INFO, "EXIT: " + String(exitOk ? "OK (HIGH)" : "PRESSED or ERROR"));
+    log_msg(APP_LOG_LEVEL_INFO, "DOOR: " + String(digitalRead(PIN_DOOR) ? "OPEN" : "CLOSED"));
     
     bool allButtonsOk = upOk && downOk && enterOk && exitOk;
     
     if (!allButtonsOk) {
-        log_msg(LOG_LEVEL_WARN, "WARNING: Some buttons may be stuck or have wiring issues");
-        log_msg(LOG_LEVEL_WARN, "If buttons don't respond, check connections");
+        log_msg(APP_LOG_LEVEL_WARN, "WARNING: Some buttons may be stuck or have wiring issues");
+        log_msg(APP_LOG_LEVEL_WARN, "If buttons don't respond, check connections");
     } else {
-        log_msg(LOG_LEVEL_INFO, "All buttons idle (pull-up HIGH) - OK");
+        log_msg(APP_LOG_LEVEL_INFO, "All buttons idle (pull-up HIGH) - OK");
     }
     
     buzzerBeep(1, 100, 0); // Krótki sygnał
@@ -296,7 +296,7 @@ void runStartupSelfTest() {
     // ===========================================
     // TEST 2: CZUJNIKI TEMPERATURY
     // ===========================================
-    log_msg(LOG_LEVEL_INFO, "=== TEMPERATURE SENSORS TEST ===");
+    log_msg(APP_LOG_LEVEL_INFO, "=== TEMPERATURE SENSORS TEST ===");
     
     sensors.requestTemperatures();
     delay(1000);
@@ -308,29 +308,29 @@ void runStartupSelfTest() {
     if (sensorCount >= 1) {
         double temp1 = sensors.getTempCByIndex(0);
         if (temp1 != DEVICE_DISCONNECTED_C && temp1 > -20 && temp1 < 100) {
-            log_msg(LOG_LEVEL_INFO, "Sensor 1: " + String(temp1, 1) + "°C - OK");
+            log_msg(APP_LOG_LEVEL_INFO, "Sensor 1: " + String(temp1, 1) + "°C - OK");
             sensor1Ok = true;
         } else {
-            log_msg(LOG_LEVEL_ERROR, "Sensor 1: FAILED or invalid reading");
+            log_msg(APP_LOG_LEVEL_ERROR, "Sensor 1: FAILED or invalid reading");
         }
     }
     
     if (sensorCount >= 2) {
         double temp2 = sensors.getTempCByIndex(1);
         if (temp2 != DEVICE_DISCONNECTED_C && temp2 > -20 && temp2 < 100) {
-            log_msg(LOG_LEVEL_INFO, "Sensor 2: " + String(temp2, 1) + "°C - OK");
+            log_msg(APP_LOG_LEVEL_INFO, "Sensor 2: " + String(temp2, 1) + "°C - OK");
             sensor2Ok = true;
         } else {
-            log_msg(LOG_LEVEL_WARN, "Sensor 2: Not connected or invalid");
+            log_msg(APP_LOG_LEVEL_WARN, "Sensor 2: Not connected or invalid");
         }
     } else {
-        log_msg(LOG_LEVEL_WARN, "Only 1 sensor detected (minimum for basic operation)");
+        log_msg(APP_LOG_LEVEL_WARN, "Only 1 sensor detected (minimum for basic operation)");
     }
     
     // ===========================================
     // TEST 3: WYJŚCIA (Krótki test bez długich opóźnień)
     // ===========================================
-    log_msg(LOG_LEVEL_INFO, "=== OUTPUT TEST ===");
+    log_msg(APP_LOG_LEVEL_INFO, "=== OUTPUT TEST ===");
     
     // Bardzo krótkie impulsy testowe
     testOutput(PIN_SSR1, "Heater 1");
@@ -348,12 +348,12 @@ void runStartupSelfTest() {
     // ===========================================
     // PODSUMOWANIE
     // ===========================================
-    log_msg(LOG_LEVEL_INFO, "=== STARTUP SELF-TEST SUMMARY ===");
-    log_msg(LOG_LEVEL_INFO, "Buttons: " + String(allButtonsOk ? "ALL OK" : "CHECK CONNECTIONS"));
-    log_msg(LOG_LEVEL_INFO, "Sensors: " + String(sensor1Ok ? "OK" : "FAILED") + 
+    log_msg(APP_LOG_LEVEL_INFO, "=== STARTUP SELF-TEST SUMMARY ===");
+    log_msg(APP_LOG_LEVEL_INFO, "Buttons: " + String(allButtonsOk ? "ALL OK" : "CHECK CONNECTIONS"));
+    log_msg(APP_LOG_LEVEL_INFO, "Sensors: " + String(sensor1Ok ? "OK" : "FAILED") + 
             " (" + String(sensorCount) + " detected)");
-    log_msg(LOG_LEVEL_INFO, "Outputs: TESTED");
-    log_msg(LOG_LEVEL_INFO, "Door: " + String(digitalRead(PIN_DOOR) ? "OPEN" : "CLOSED"));
+    log_msg(APP_LOG_LEVEL_INFO, "Outputs: TESTED");
+    log_msg(APP_LOG_LEVEL_INFO, "Door: " + String(digitalRead(PIN_DOOR) ? "OPEN" : "CLOSED"));
     
     // Sygnał końcowy
     if (allButtonsOk && sensor1Ok) {
@@ -362,23 +362,23 @@ void runStartupSelfTest() {
         buzzerBeep(4, 150, 100); // Ostrzeżenie - 4 beepy
     }
     
-    log_msg(LOG_LEVEL_INFO, "Self-test completed");
+    log_msg(APP_LOG_LEVEL_INFO, "Self-test completed");
 }
 
 void testOutput(int pin, const char* name) {
     digitalWrite(pin, HIGH);
     delay(50); // Bardzo krótki puls - 50ms zamiast 100ms
     digitalWrite(pin, LOW);
-    log_msg(LOG_LEVEL_INFO, String(name) + " test: OK");
+    log_msg(APP_LOG_LEVEL_INFO, String(name) + " test: OK");
 }
 
 void testButton(int pin, const char* name) {
     bool state = digitalRead(pin);
-    log_msg(LOG_LEVEL_INFO, String(name) + ": " + String(state ? "HIGH" : "LOW"));
+    log_msg(APP_LOG_LEVEL_INFO, String(name) + ": " + String(state ? "HIGH" : "LOW"));
 }
 
 void enterLowPowerMode() {
-    log_msg(LOG_LEVEL_INFO, "Entering low power mode");
+    log_msg(APP_LOG_LEVEL_INFO, "Entering low power mode");
     
     // Wyłącz niepotrzebne peryferia
     // display.sleep(true);
@@ -391,7 +391,7 @@ void enterLowPowerMode() {
     // Ustaw przycisk ENTER jako dodatkowy wakeup
     esp_sleep_enable_ext1_wakeup(1ULL << PIN_BTN_ENTER, ESP_EXT1_WAKEUP_ANY_HIGH);
     
-    log_msg(LOG_LEVEL_INFO, "Entering deep sleep...");
+    log_msg(APP_LOG_LEVEL_INFO, "Entering deep sleep...");
     delay(100);
     esp_deep_sleep_start();
 }
