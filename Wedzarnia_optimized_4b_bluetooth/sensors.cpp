@@ -34,7 +34,7 @@ void identifyAndAssignSensors() {
     if (sensorsIdentified) return;
     
     int deviceCount = sensors.getDeviceCount();
-    log_msg(LOG_LEVEL_INFO, "Identifying " + String(deviceCount) + " sensor(s)...");
+    log_msg(APP_LOG_LEVEL_INFO, "Identifying " + String(deviceCount) + " sensor(s)...");
     
     if (deviceCount >= 2) {
         // Pobierz adresy wszystkich czujników
@@ -46,7 +46,7 @@ void identifyAndAssignSensors() {
                         sensorAddresses[i][2], sensorAddresses[i][3],
                         sensorAddresses[i][4], sensorAddresses[i][5],
                         sensorAddresses[i][6], sensorAddresses[i][7]);
-                log_msg(LOG_LEVEL_INFO, "Sensor " + String(i) + ": " + String(addrStr));
+                log_msg(APP_LOG_LEVEL_INFO, "Sensor " + String(i) + ": " + String(addrStr));
             }
         }
         
@@ -60,7 +60,7 @@ void identifyAndAssignSensors() {
                 chamberSensorIndex = savedChamberIndex;
                 meatSensorIndex = savedMeatIndex;
                 sensorsIdentified = true;
-                log_msg(LOG_LEVEL_INFO, "Loaded sensor assignments from NVS");
+                log_msg(APP_LOG_LEVEL_INFO, "Loaded sensor assignments from NVS");
                 nvs_close(nvsHandle);
                 return;
             }
@@ -80,13 +80,13 @@ void identifyAndAssignSensors() {
         }
         
         sensorsIdentified = true;
-        log_msg(LOG_LEVEL_INFO, "Assigned: Sensor " + String(chamberSensorIndex) + " = CHAMBER");
-        log_msg(LOG_LEVEL_INFO, "Assigned: Sensor " + String(meatSensorIndex) + " = MEAT");
+        log_msg(APP_LOG_LEVEL_INFO, "Assigned: Sensor " + String(chamberSensorIndex) + " = CHAMBER");
+        log_msg(APP_LOG_LEVEL_INFO, "Assigned: Sensor " + String(meatSensorIndex) + " = MEAT");
         
         // Długi sygnał potwierdzający
         buzzerBeep(3, 200, 100);
     } else {
-        log_msg(LOG_LEVEL_WARN, "Need at least 2 sensors for proper assignment");
+        log_msg(APP_LOG_LEVEL_WARN, "Need at least 2 sensors for proper assignment");
         sensorsIdentified = false;
     }
 }
@@ -94,7 +94,7 @@ void identifyAndAssignSensors() {
 // Funkcja do ręcznej zmiany przypisań
 void reassignSensors(int newChamberIndex, int newMeatIndex) {
     if (newChamberIndex == newMeatIndex) {
-        log_msg(LOG_LEVEL_ERROR, "Cannot assign same sensor to both chamber and meat!");
+        log_msg(APP_LOG_LEVEL_ERROR, "Cannot assign same sensor to both chamber and meat!");
         return;
     }
     
@@ -110,7 +110,7 @@ void reassignSensors(int newChamberIndex, int newMeatIndex) {
         nvs_close(nvsHandle);
     }
     
-    log_msg(LOG_LEVEL_INFO, "Reassigned sensors: Chamber=" + String(chamberSensorIndex) + 
+    log_msg(APP_LOG_LEVEL_INFO, "Reassigned sensors: Chamber=" + String(chamberSensorIndex) + 
             ", Meat=" + String(meatSensorIndex));
     buzzerBeep(2, 100, 100);
 }
@@ -127,7 +127,7 @@ void requestTemperature() {
             lastTempRequest = now;
             lastTempReadPossible = now + TEMP_CONVERSION_TIME;
         } else {
-            log_msg(LOG_LEVEL_WARN, "Temperature request failed");
+            log_msg(APP_LOG_LEVEL_WARN, "Temperature request failed");
         }
     }
 }
@@ -165,7 +165,7 @@ void readTemperature() {
     if (!sensorsIdentified) {
         identifyAndAssignSensors();
         if (!sensorsIdentified) {
-            log_msg(LOG_LEVEL_WARN, "Sensors not identified, using defaults");
+            log_msg(APP_LOG_LEVEL_WARN, "Sensors not identified, using defaults");
             chamberSensorIndex = DEFAULT_CHAMBER_SENSOR;
             meatSensorIndex = DEFAULT_MEAT_SENSOR;
         }
@@ -189,7 +189,7 @@ void readTemperature() {
                 if (g_currentState == ProcessState::RUNNING_AUTO || 
                     g_currentState == ProcessState::RUNNING_MANUAL) {
                     g_currentState = ProcessState::PAUSE_SENSOR;
-                    log_msg(LOG_LEVEL_ERROR, "Sensor error - pausing process");
+                    log_msg(APP_LOG_LEVEL_ERROR, "Sensor error - pausing process");
                 }
                 state_unlock();
             }
@@ -201,7 +201,7 @@ void readTemperature() {
                 g_tChamber = cachedChamber.value;
                 state_unlock();
             }
-            log_msg(LOG_LEVEL_WARN, "Using cached chamber temp: " + String(cachedChamber.value));
+            log_msg(APP_LOG_LEVEL_WARN, "Using cached chamber temp: " + String(cachedChamber.value));
         }
     } else {
         sensorErrorCount = 0;
@@ -215,7 +215,7 @@ void readTemperature() {
             // Jeśli poprzednio był błąd czujnika i teraz jest OK, wyczyść błąd
             if (g_errorSensor && g_currentState == ProcessState::PAUSE_SENSOR) {
                 g_errorSensor = false;
-                log_msg(LOG_LEVEL_INFO, "Sensor recovered");
+                log_msg(APP_LOG_LEVEL_INFO, "Sensor recovered");
             }
             state_unlock();
         }
@@ -248,7 +248,7 @@ void readTemperature() {
             g_errorOverheat = true;
             g_currentState = ProcessState::PAUSE_OVERHEAT;
             String alertMsg = "OVERHEAT detected: " + String(g_tChamber, 1) + "°C";
-            log_msg(LOG_LEVEL_ERROR, alertMsg);
+            log_msg(APP_LOG_LEVEL_ERROR, alertMsg);
         }
         state_unlock();
     }
@@ -270,14 +270,14 @@ void checkDoor() {
                 g_processStats.pauseCount++;
                 shouldTurnOff = true;
                 shouldBeep = true;
-                log_msg(LOG_LEVEL_INFO, "Door opened - pausing");
+                log_msg(APP_LOG_LEVEL_INFO, "Door opened - pausing");
             }
         } else if (!nowOpen && wasOpen) {
             g_doorOpen = false;
             if (g_currentState == ProcessState::PAUSE_DOOR) {
                 g_currentState = ProcessState::SOFT_RESUME;
                 shouldResume = true;
-                log_msg(LOG_LEVEL_INFO, "Door closed - resuming");
+                log_msg(APP_LOG_LEVEL_INFO, "Door closed - resuming");
             }
         }
         state_unlock();
@@ -327,7 +327,7 @@ String getSensorAssignmentInfo() {
 bool autoDetectAndAssignSensors() {
     int deviceCount = sensors.getDeviceCount();
     if (deviceCount < 2) {
-        log_msg(LOG_LEVEL_ERROR, "Need at least 2 sensors for auto-detection");
+        log_msg(APP_LOG_LEVEL_ERROR, "Need at least 2 sensors for auto-detection");
         return false;
     }
     
