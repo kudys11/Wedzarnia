@@ -9,17 +9,18 @@
 #include "wifimanager.h"
 #include <esp_task_wdt.h>
 
-// Inicjalizuje wbudowany w ESP32 watchdog (TWDT).
-// Zmieniono trigger_panic na false, aby uniknąć restartów podczas debugowania.
-// Zamiast tego, w logach pojawi się błąd, jeśli zadanie się zawiesi.
+// Konfiguruje wbudowany w ESP32 watchdog (TWDT).
+// 'trigger_panic = true' powoduje wygenerowanie szczegółowego raportu błędu zamiast cichego restartu.
+// Używamy `reconfigure`, ponieważ TWDT może być już domyślnie aktywny po starcie systemu.
 static void watchdog_init() {
     esp_task_wdt_config_t wdt_config = {
         .timeout_ms = WDT_TIMEOUT * 1000,
         .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
-        .trigger_panic = false // WAŻNE: Zmienione na false
+        .trigger_panic = true 
     };
-    esp_task_wdt_init(&wdt_config); // Używamy init() przy pierwszym uruchomieniu
-    log_msg(APP_LOG_LEVEL_INFO, "Task Watchdog initialized (" + String(WDT_TIMEOUT) + "s timeout)");
+    // Używamy reconfigure, na wypadek gdyby WDT był już zainicjowany przez system
+    esp_task_wdt_reconfigure(&wdt_config);
+    log_msg(APP_LOG_LEVEL_INFO, "Task Watchdog reconfigured (" + String(WDT_TIMEOUT) + "s timeout)");
 }
 
 void taskControl(void* pv) {
@@ -117,7 +118,7 @@ void taskMonitor(void* pv) {
                 if (stats.totalRunTime > 0) {
                     unsigned long runHours = stats.totalRunTime / 3600000;
                     unsigned long runMins = (stats.totalRunTime % 3600000) / 60000;
-                    unsigned long heatPercent = (stats.activeHeatingTime * 100) / stats.totalRunTime;
+                    unsigned long heatPercent = (stats.totalRunTime > 0) ? (stats.activeHeatingTime * 100) / stats.totalRunTime : 0;
                     
                     log_msg(APP_LOG_LEVEL_INFO, "[STATS] Runtime: " + String(runHours) + "h " + String(runMins) + "m");
                     log_msg(APP_LOG_LEVEL_INFO, "[STATS] Heating: " + String(heatPercent) + "%, Avg temp: " + String(stats.avgTemp, 1) + "°C");
@@ -140,15 +141,19 @@ void taskMonitor(void* pv) {
 void tasks_create_all() {
     watchdog_init();
     
+    // === KLUCZOWA ZMIANA: ZWIĘKSZENIE ROZMIARU STOSU DLA ZADAŃ ===
+    // Przyczyną restartów było najprawdopodobniej przepełnienie stosu w jednym z zadań.
+    
     // Core 1: Zadania krytyczne (interfejs, sterowanie, czujniki)
-    xTaskCreatePinnedToCore(taskControl, "Control", 4096, NULL, 3, NULL, 1);
-    xTaskCreatePinnedToCore(taskSensors, "Sensors", 4096, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(taskUI, "UI", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(taskControl, "Control", 8192, NULL, 3, NULL, 1);  // Było 4096
+    xTaskCreatePinnedToCore(taskSensors, "Sensors", 8192, NULL, 2, NULL, 1);  // Było 4096
+    xTaskCreatePinnedToCore(taskUI, "UI", 8192, NULL, 2, NULL, 1);          // Było 4096
     
     // Core 0: Zadania sieciowe i monitoring
-    xTaskCreatePinnedToCore(taskWeb, "Web", 10240, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(taskWiFi, "WiFi", 4096, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(taskMonitor, "Monitor", 4096, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(taskWeb, "Web", 12288, NULL, 1, NULL, 0);       // Było 10240
+    xTaskCreatePinnedToCore(taskWiFi, "WiFi", 8192, NULL, 1, NULL, 0);        // Było 4096
+    xTaskCreatePinnedToCore(taskMonitor, "Monitor", 8192, NULL, 1, NULL, 0); // Było 4096
     
-    log_msg(APP_LOG_LEVEL_INFO, "All tasks created successfully");
+    log_msg(APP_LOG_LEVEL_INFO, "All tasks created with increased stack size");
 }
+
