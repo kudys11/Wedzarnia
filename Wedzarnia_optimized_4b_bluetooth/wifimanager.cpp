@@ -18,15 +18,15 @@ void wifi_init() {
     
     // Uruchom Access Point
     WiFi.softAP(CFG_AP_SSID, CFG_AP_PASS);
-    log_msg(LOG_LEVEL_INFO, "AP Started: " + String(CFG_AP_SSID));
-    log_msg(LOG_LEVEL_INFO, "AP IP: " + WiFi.softAPIP().toString());
+    log_msg(APP_LOG_LEVEL_INFO, "AP Started: " + String(CFG_AP_SSID));
+    log_msg(APP_LOG_LEVEL_INFO, "AP IP: " + WiFi.softAPIP().toString());
     
     // Spróbuj połączyć się z zapisaną siecią WiFi STA
     const char* sta_ssid = storage_get_wifi_ssid();
     const char* sta_pass = storage_get_wifi_pass();
     
     if (sta_ssid && strlen(sta_ssid) > 0) {
-        log_msg(LOG_LEVEL_INFO, "Connecting to WiFi: " + String(sta_ssid));
+        log_msg(APP_LOG_LEVEL_INFO, "Connecting to WiFi: " + String(sta_ssid));
         WiFi.begin(sta_ssid, sta_pass);
         connectionStartTime = millis();
         
@@ -39,17 +39,17 @@ void wifi_init() {
         }
         
         if (WiFi.status() == WL_CONNECTED) {
-            log_msg(LOG_LEVEL_INFO, "WiFi connected!");
-            log_msg(LOG_LEVEL_INFO, "STA IP: " + WiFi.localIP().toString());
+            log_msg(APP_LOG_LEVEL_INFO, "WiFi connected!");
+            log_msg(APP_LOG_LEVEL_INFO, "STA IP: " + WiFi.localIP().toString());
             wasConnected = true;
             stats.lastReconnect = millis();
             buzzerBeep(2, 50, 50); // Krótki sygnał sukcesu
         } else {
-            log_msg(LOG_LEVEL_WARN, "WiFi connection failed");
+            log_msg(APP_LOG_LEVEL_WARN, "WiFi connection failed");
             disconnectionStartTime = millis();
         }
     } else {
-        log_msg(LOG_LEVEL_INFO, "No WiFi credentials stored, running in AP-only mode");
+        log_msg(APP_LOG_LEVEL_INFO, "No WiFi credentials stored, running in AP-only mode");
     }
 }
 
@@ -74,7 +74,7 @@ void wifi_maintain_connection() {
         disconnectionStartTime = 0;
         connectionStartTime = now;
         retryDelay = CFG_WIFI_RETRY_MIN_DELAY; // Reset backoff
-        log_msg(LOG_LEVEL_INFO, "WiFi reconnected! IP: " + WiFi.localIP().toString());
+        log_msg(APP_LOG_LEVEL_INFO, "WiFi reconnected! IP: " + WiFi.localIP().toString());
         buzzerBeep(1, 50, 0); // Krótki sygnał
         
     } else if (!isConnected && wasConnected) {
@@ -86,7 +86,7 @@ void wifi_maintain_connection() {
         }
         connectionStartTime = 0;
         disconnectionStartTime = now;
-        log_msg(LOG_LEVEL_WARN, "WiFi connection lost!");
+        log_msg(APP_LOG_LEVEL_WARN, "WiFi connection lost!");
     }
     
     wasConnected = isConnected;
@@ -101,7 +101,7 @@ void wifi_maintain_connection() {
             if (now - lastReconnectAttempt >= retryDelay) {
                 lastReconnectAttempt = now;
                 
-                log_msg(LOG_LEVEL_INFO, "Attempting WiFi reconnect (delay: " + 
+                log_msg(APP_LOG_LEVEL_INFO, "Attempting WiFi reconnect (delay: " + 
                         String(retryDelay/1000) + "s)...");
                 
                 WiFi.reconnect();
@@ -143,5 +143,5 @@ void wifi_reset_stats() {
     stats.disconnectCount = 0;
     stats.lastDisconnect = 0;
     stats.lastReconnect = 0;
-    log_msg(LOG_LEVEL_INFO, "WiFi stats reset");
+    log_msg(APP_LOG_LEVEL_INFO, "WiFi stats reset");
 }
