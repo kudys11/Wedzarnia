@@ -92,11 +92,11 @@ constexpr int MAX_STEPS = 8;
 constexpr TickType_t CFG_MUTEX_TIMEOUT_MS = 1000;
 
 // --- Logging ---
-constexpr int LOG_LEVEL_DEBUG = 0;
-constexpr int LOG_LEVEL_INFO = 1;
-constexpr int LOG_LEVEL_WARN = 2;
-constexpr int LOG_LEVEL_ERROR = 3;
-constexpr int CURRENT_LOG_LEVEL = LOG_LEVEL_INFO;
+constexpr int APP_LOG_LEVEL_DEBUG = 0;
+constexpr int APP_LOG_LEVEL_INFO = 1;
+constexpr int APP_LOG_LEVEL_WARN = 2;
+constexpr int APP_LOG_LEVEL_ERROR = 3;
+constexpr int CURRENT_LOG_LEVEL = APP_LOG_LEVEL_INFO;
 
 // --- Low Power Mode ---
 constexpr unsigned long LOW_POWER_TIMEOUT = 1800000; // 30 minut
@@ -181,6 +181,9 @@ struct ProcessStats {
 inline void log_msg(int level, const String& msg) {
     if (level >= CURRENT_LOG_LEVEL) {
         const char* prefix[] = {"[DBG]", "[INF]", "[WRN]", "[ERR]"};
-        Serial.printf("%s %s\n", prefix[level], msg.c_str());
+        // Używamy nowych nazw stałych 'APP_LOG_LEVEL_*'
+        if (level >= APP_LOG_LEVEL_DEBUG && level <= APP_LOG_LEVEL_ERROR) {
+             Serial.printf("%s %s\n", prefix[level], msg.c_str());
+        }
     }
 }
