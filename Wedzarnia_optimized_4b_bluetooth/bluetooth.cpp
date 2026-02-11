@@ -1,4 +1,4 @@
-// bluetooth.cpp - Implementacja Bluetooth Classic
+// bluetooth.cpp - Implementacja BLE z NimBLE (ESP32-S3)
 #include "bluetooth.h"
 #include "config.h"
 #include "state.h"
@@ -6,354 +6,395 @@
 #include "storage.h"
 #include <SD.h>
 
-BluetoothSerial SerialBT;
+// ======================================================
+// Zmienne wewnętrzne
+// ======================================================
+static NimBLEServer*         pServer        = nullptr;
+static NimBLECharacteristic* pStatusChar    = nullptr; // notify → status co 2s
+static NimBLECharacteristic* pCommandChar   = nullptr; // write  ← komendy
+static NimBLECharacteristic* pResponseChar  = nullptr; // notify ← odpowiedzi
 
-// Bufor dla przychodzących komend
-static String btCommandBuffer = "";
-static unsigned long lastStatusSend = 0;
-static const unsigned long STATUS_SEND_INTERVAL = 2000; // Co 2 sekundy
+static bool    deviceConnected    = false;
+static bool    prevConnected      = false;
+static unsigned long lastStatusMs = 0;
+constexpr unsigned long STATUS_INTERVAL_MS = 2000;
 
-void bluetooth_init() {
-    if (!SerialBT.begin("Wedzarnia_ESP32")) {
-        log_msg(LOG_LEVEL_ERROR, "Bluetooth init failed!");
-        return;
+// Kolejka komend (thread-safe: zapisywana z callbacku BLE, czytana w loop())
+static volatile bool     commandPending = false;
+static char              commandBuf[128] = {0};
+static portMUX_TYPE      commandMux = portMUX_INITIALIZER_UNLOCKED;
+
+// ======================================================
+// Callbacki serwera BLE
+// ======================================================
+class ServerCallbacks : public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pSrv, NimBLEConnInfo& connInfo) override {
+        deviceConnected = true;
+        log_msg(LOG_LEVEL_INFO, "BLE: Client connected");
+        // Zmniejsz interval połączenia dla szybszych powiadomień
+        pSrv->updateConnParams(connInfo.getConnHandle(), 6, 12, 0, 200);
     }
-    
-    log_msg(LOG_LEVEL_INFO, "Bluetooth started: 'Wedzarnia_ESP32'");
-    log_msg(LOG_LEVEL_INFO, "Waiting for connection...");
-}
 
-bool bluetooth_is_connected() {
-    return SerialBT.hasClient();
-}
-
-void bluetooth_log(const String& message) {
-    if (bluetooth_is_connected()) {
-        SerialBT.println("LOG:" + message);
+    void onDisconnect(NimBLEServer* pSrv, NimBLEConnInfo& connInfo, int reason) override {
+        deviceConnected = false;
+        log_msg(LOG_LEVEL_INFO, "BLE: Client disconnected, restarting advertising...");
+        NimBLEDevice::startAdvertising();
     }
+};
+
+// ======================================================
+// Callback odbioru komend z telefonu
+// Uruchamiany w wątku BLE - tylko kopiuj do bufora!
+// ======================================================
+class CommandCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
+        std::string val = pChar->getValue();
+        if (val.length() == 0 || val.length() >= sizeof(commandBuf)) return;
+
+        portENTER_CRITICAL(&commandMux);
+        if (!commandPending) {                          // Nie nadpisuj poprzedniej
+            memcpy(commandBuf, val.c_str(), val.length());
+            commandBuf[val.length()] = '\0';
+            commandPending = true;
+        }
+        portEXIT_CRITICAL(&commandMux);
+    }
+};
+
+// ======================================================
+// Inicjalizacja BLE
+// ======================================================
+void ble_init() {
+    NimBLEDevice::init(BLE_DEVICE_NAME);
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);            // Maksymalna moc ~+9dBm
+
+    pServer = NimBLEDevice::createServer();
+    pServer->setCallbacks(new ServerCallbacks());
+
+    // Utwórz serwis
+    NimBLEService* pService = pServer->createService(BLE_SERVICE_UUID);
+
+    // Charakterystyka STATUS - notify, tylko odczyt przez telefon
+    pStatusChar = pService->createCharacteristic(
+        BLE_CHAR_STATUS_UUID,
+        NIMBLE_PROPERTY::NOTIFY
+    );
+
+    // Charakterystyka COMMAND - write, telefon wysyła komendy
+    pCommandChar = pService->createCharacteristic(
+        BLE_CHAR_COMMAND_UUID,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+    );
+    pCommandChar->setCallbacks(new CommandCallbacks());
+
+    // Charakterystyka RESPONSE - notify, odpowiedzi na komendy
+    pResponseChar = pService->createCharacteristic(
+        BLE_CHAR_RESPONSE_UUID,
+        NIMBLE_PROPERTY::NOTIFY
+    );
+
+    pService->start();
+
+    // Reklama BLE
+    NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+    pAdv->addServiceUUID(BLE_SERVICE_UUID);
+    pAdv->setScanResponse(true);
+    pAdv->setMinPreferred(0x06);
+    pAdv->setMaxPreferred(0x12);
+    NimBLEDevice::startAdvertising();
+
+    log_msg(LOG_LEVEL_INFO, "BLE started: '" BLE_DEVICE_NAME "'");
+    log_msg(LOG_LEVEL_INFO, "BLE: Waiting for connection...");
 }
 
-void bluetooth_send_status() {
-    if (!bluetooth_is_connected()) return;
-    
-    state_lock();
-    
-    // Format: STATUS:state,tSet,tChamber,tMeat,power,smoke,fan,step,stepCount
-    String status = "STATUS:";
-    
-    // Stan procesu
+// ======================================================
+// Sprawdź czy telefon jest podłączony
+// ======================================================
+bool ble_is_connected() {
+    return deviceConnected;
+}
+
+// ======================================================
+// Wyślij krótką odpowiedź / log do telefonu
+// ======================================================
+void ble_notify(const String& message) {
+    if (!deviceConnected || !pResponseChar) return;
+    pResponseChar->setValue(message.c_str());
+    pResponseChar->notify();
+}
+
+// ======================================================
+// Buduj i wyślij pełny status
+// FORMAT: STATUS:state,tSet,tChamber,tMeat,power,smoke,fan,step,total,door,errSensor,errHeat
+// ======================================================
+void ble_send_status() {
+    if (!deviceConnected || !pStatusChar) return;
+
+    char buf[192];
+
+    if (!state_lock()) return;
+
+    const char* stateStr;
     switch (g_currentState) {
-        case ProcessState::IDLE: status += "IDLE"; break;
-        case ProcessState::RUNNING_AUTO: status += "AUTO"; break;
-        case ProcessState::RUNNING_MANUAL: status += "MANUAL"; break;
-        case ProcessState::PAUSE_DOOR: status += "PAUSE_DOOR"; break;
-        case ProcessState::PAUSE_SENSOR: status += "PAUSE_SENSOR"; break;
-        case ProcessState::PAUSE_OVERHEAT: status += "PAUSE_OVERHEAT"; break;
-        case ProcessState::PAUSE_USER: status += "PAUSE_USER"; break;
-        case ProcessState::ERROR_PROFILE: status += "ERROR"; break;
-        case ProcessState::SOFT_RESUME: status += "RESUMING"; break;
+        case ProcessState::IDLE:           stateStr = "IDLE";          break;
+        case ProcessState::RUNNING_AUTO:   stateStr = "AUTO";          break;
+        case ProcessState::RUNNING_MANUAL: stateStr = "MANUAL";        break;
+        case ProcessState::PAUSE_DOOR:     stateStr = "PAUSE_DOOR";    break;
+        case ProcessState::PAUSE_SENSOR:   stateStr = "PAUSE_SENSOR";  break;
+        case ProcessState::PAUSE_OVERHEAT: stateStr = "PAUSE_HEAT";    break;
+        case ProcessState::PAUSE_USER:     stateStr = "PAUSE_USER";    break;
+        case ProcessState::ERROR_PROFILE:  stateStr = "ERROR";         break;
+        case ProcessState::SOFT_RESUME:    stateStr = "RESUMING";      break;
+        default:                           stateStr = "UNKNOWN";       break;
     }
-    
-    status += ",";
-    status += String(g_tSet, 1);
-    status += ",";
-    status += String(g_tChamber, 1);
-    status += ",";
-    status += String(g_tMeat, 1);
-    status += ",";
-    status += String(g_powerMode);
-    status += ",";
-    status += String(g_manualSmokePwm);
-    status += ",";
-    status += String(g_fanMode);
-    status += ",";
-    status += String(g_currentStep);
-    status += ",";
-    status += String(g_stepCount);
-    status += ",";
-    status += String(g_doorOpen ? "1" : "0");
-    status += ",";
-    status += String(g_errorSensor ? "1" : "0");
-    status += ",";
-    status += String(g_errorOverheat ? "1" : "0");
-    
+
+    snprintf(buf, sizeof(buf),
+        "STATUS:%s,%.1f,%.1f,%.1f,%d,%d,%d,%d,%d,%d,%d,%d",
+        stateStr,
+        (double)g_tSet,
+        (double)g_tChamber,
+        (double)g_tMeat,
+        (int)g_powerMode,
+        (int)g_manualSmokePwm,
+        (int)g_fanMode,
+        (int)g_currentStep,
+        (int)g_stepCount,
+        g_doorOpen     ? 1 : 0,
+        g_errorSensor  ? 1 : 0,
+        g_errorOverheat? 1 : 0
+    );
+
     state_unlock();
-    
-    SerialBT.println(status);
+
+    pStatusChar->setValue(buf);
+    pStatusChar->notify();
 }
 
-void bluetooth_send_temperatures() {
-    if (!bluetooth_is_connected()) return;
-    
-    state_lock();
-    String temps = "TEMPS:";
-    temps += String(g_tChamber, 2);
-    temps += ",";
-    temps += String(g_tMeat, 2);
-    temps += ",";
-    temps += String(g_tSet, 1);
-    state_unlock();
-    
-    SerialBT.println(temps);
-}
+// ======================================================
+// Wyślij listę profili z SD
+// ======================================================
+static void sendProfileList() {
+    ble_notify("PROFILES_START");
 
-void bluetooth_send_profile_list() {
-    if (!bluetooth_is_connected()) return;
-    
-    SerialBT.println("PROFILES_START");
-    
     File root = SD.open("/profiles");
     if (!root || !root.isDirectory()) {
-        SerialBT.println("PROFILES_END");
+        ble_notify("PROFILES_END");
         return;
     }
-    
+
     File file = root.openNextFile();
     while (file) {
         if (!file.isDirectory()) {
-            String fileName = file.name();
-            if (fileName.endsWith(".prof")) {
-                SerialBT.println("PROFILE:" + fileName);
+            String name = file.name();
+            if (name.endsWith(".prof")) {
+                ble_notify("PROFILE:" + name);
+                delay(20); // Mały odstęp żeby BLE nie tracił pakietów
             }
         }
         file = root.openNextFile();
     }
     root.close();
-    
-    SerialBT.println("PROFILES_END");
+    ble_notify("PROFILES_END");
 }
 
-void bluetooth_parse_command(String command) {
+// ======================================================
+// Parsowanie i wykonanie komendy
+// Wywołane z loop() - bezpieczne!
+// ======================================================
+static void executeCommand(const char* cmd) {
+    String command = String(cmd);
     command.trim();
-    
     if (command.length() == 0) return;
-    
-    log_msg(LOG_LEVEL_INFO, "BT Command: " + command);
-    
-    // PING-PONG test
+
+    log_msg(LOG_LEVEL_INFO, "BLE cmd: " + command);
+
+    // --- Proste komendy bez parametrów ---
+
     if (command == BTCommand::PING) {
-        SerialBT.println(BTResponse::PONG);
+        ble_notify("PONG");
         return;
     }
-    
-    // GET STATUS
+
     if (command == BTCommand::GET_STATUS) {
-        bluetooth_send_status();
+        ble_send_status();
         return;
     }
-    
-    // GET TEMPERATURES
+
     if (command == BTCommand::GET_TEMPS) {
-        bluetooth_send_temperatures();
+        char buf[64];
+        if (!state_lock()) return;
+        snprintf(buf, sizeof(buf), "TEMPS:%.2f,%.2f,%.1f",
+            (double)g_tChamber, (double)g_tMeat, (double)g_tSet);
+        state_unlock();
+        ble_notify(buf);
         return;
     }
-    
-    // GET PROFILES
+
     if (command == BTCommand::GET_PROFILES) {
-        bluetooth_send_profile_list();
+        sendProfileList();
         return;
     }
-    
-    // START AUTO
+
     if (command == BTCommand::START_AUTO) {
-        if (state_lock()) {
-            if (g_errorProfile) {
-                SerialBT.println("ERROR:No profile loaded");
-                state_unlock();
-                return;
-            }
+        if (!state_lock()) return;
+        if (g_errorProfile) {
             state_unlock();
+            ble_notify("ERROR:No profile loaded");
+            return;
         }
+        state_unlock();
         process_start_auto();
-        SerialBT.println(BTResponse::OK);
-        bluetooth_log("AUTO mode started");
+        ble_notify("OK");
         return;
     }
-    
-    // START MANUAL
+
     if (command == BTCommand::START_MANUAL) {
         process_start_manual();
-        SerialBT.println(BTResponse::OK);
-        bluetooth_log("MANUAL mode started");
+        ble_notify("OK");
         return;
     }
-    
-    // STOP
+
     if (command == BTCommand::STOP) {
         if (state_lock()) {
             g_currentState = ProcessState::PAUSE_USER;
             state_unlock();
         }
-        SerialBT.println(BTResponse::OK);
-        bluetooth_log("Process stopped");
+        ble_notify("OK");
         return;
     }
-    
-    // PAUSE
+
     if (command == BTCommand::PAUSE) {
-        if (state_lock()) {
-            if (g_currentState == ProcessState::RUNNING_AUTO || 
-                g_currentState == ProcessState::RUNNING_MANUAL) {
-                g_currentState = ProcessState::PAUSE_USER;
-                SerialBT.println(BTResponse::OK);
-                bluetooth_log("Process paused");
-            } else {
-                SerialBT.println("ERROR:Not running");
-            }
+        if (!state_lock()) return;
+        if (g_currentState == ProcessState::RUNNING_AUTO ||
+            g_currentState == ProcessState::RUNNING_MANUAL) {
+            g_currentState = ProcessState::PAUSE_USER;
             state_unlock();
+            ble_notify("OK");
+        } else {
+            state_unlock();
+            ble_notify("ERROR:Not running");
         }
         return;
     }
-    
-    // RESUME
+
     if (command == BTCommand::RESUME) {
-        if (state_lock()) {
-            if (g_currentState == ProcessState::PAUSE_USER) {
-                state_unlock();
-                process_resume();
-                SerialBT.println(BTResponse::OK);
-                bluetooth_log("Process resumed");
-            } else {
-                SerialBT.println("ERROR:Not paused");
-                state_unlock();
-            }
+        if (!state_lock()) return;
+        if (g_currentState == ProcessState::PAUSE_USER) {
+            state_unlock();
+            process_resume();
+            ble_notify("OK");
+        } else {
+            state_unlock();
+            ble_notify("ERROR:Not paused");
         }
         return;
     }
-    
-    // NEXT STEP
+
     if (command == BTCommand::NEXT_STEP) {
         process_force_next_step();
-        SerialBT.println(BTResponse::OK);
+        ble_notify("OK");
         return;
     }
-    
-    // Komendy z parametrem (format: COMMAND:value)
-    int colonIndex = command.indexOf(':');
-    if (colonIndex > 0) {
-        String cmd = command.substring(0, colonIndex);
-        String value = command.substring(colonIndex + 1);
-        
-        // SET_TEMP:75.5
-        if (cmd == BTCommand::SET_TEMP) {
+
+    // --- Komendy z parametrem: KOMENDA:wartość ---
+    int colonIdx = command.indexOf(':');
+    if (colonIdx > 0) {
+        String cmd2  = command.substring(0, colonIdx);
+        String value = command.substring(colonIdx + 1);
+
+        if (cmd2 == BTCommand::SET_TEMP) {
             double temp = value.toDouble();
             if (temp >= CFG_T_MIN_SET && temp <= CFG_T_MAX_SET) {
-                if (state_lock()) {
-                    g_tSet = temp;
-                    state_unlock();
-                }
-                SerialBT.println(BTResponse::OK);
-                bluetooth_log("Temp set to " + String(temp, 1));
+                if (state_lock()) { g_tSet = temp; state_unlock(); }
+                ble_notify("OK");
             } else {
-                SerialBT.println("ERROR:Invalid temp range");
+                ble_notify("ERROR:Temp out of range");
             }
             return;
         }
-        
-        // SET_POWER:2
-        if (cmd == BTCommand::SET_POWER) {
-            int power = value.toInt();
-            if (power >= CFG_POWERMODE_MIN && power <= CFG_POWERMODE_MAX) {
-                if (state_lock()) {
-                    g_powerMode = power;
-                    state_unlock();
-                }
-                SerialBT.println(BTResponse::OK);
-                bluetooth_log("Power mode set to " + String(power));
+
+        if (cmd2 == BTCommand::SET_POWER) {
+            int pw = value.toInt();
+            if (pw >= CFG_POWERMODE_MIN && pw <= CFG_POWERMODE_MAX) {
+                if (state_lock()) { g_powerMode = pw; state_unlock(); }
+                ble_notify("OK");
             } else {
-                SerialBT.println("ERROR:Invalid power mode");
+                ble_notify("ERROR:Power 1-3");
             }
             return;
         }
-        
-        // SET_SMOKE:128
-        if (cmd == BTCommand::SET_SMOKE) {
-            int smoke = value.toInt();
-            if (smoke >= CFG_SMOKE_PWM_MIN && smoke <= CFG_SMOKE_PWM_MAX) {
-                if (state_lock()) {
-                    g_manualSmokePwm = smoke;
-                    state_unlock();
-                }
-                SerialBT.println(BTResponse::OK);
-                bluetooth_log("Smoke PWM set to " + String(smoke));
+
+        if (cmd2 == BTCommand::SET_SMOKE) {
+            int sm = value.toInt();
+            if (sm >= CFG_SMOKE_PWM_MIN && sm <= CFG_SMOKE_PWM_MAX) {
+                if (state_lock()) { g_manualSmokePwm = sm; state_unlock(); }
+                ble_notify("OK");
             } else {
-                SerialBT.println("ERROR:Invalid smoke PWM");
+                ble_notify("ERROR:Smoke 0-255");
             }
             return;
         }
-        
-        // SET_FAN:1
-        if (cmd == BTCommand::SET_FAN) {
-            int fan = value.toInt();
-            if (fan >= 0 && fan <= 2) {
-                if (state_lock()) {
-                    g_fanMode = fan;
-                    state_unlock();
-                }
-                SerialBT.println(BTResponse::OK);
-                bluetooth_log("Fan mode set to " + String(fan));
+
+        if (cmd2 == BTCommand::SET_FAN) {
+            int fm = value.toInt();
+            if (fm >= 0 && fm <= 2) {
+                if (state_lock()) { g_fanMode = fm; state_unlock(); }
+                ble_notify("OK");
             } else {
-                SerialBT.println("ERROR:Invalid fan mode");
+                ble_notify("ERROR:Fan 0-2");
             }
             return;
         }
-        
-        // LOAD_PROFILE:test.prof
-        if (cmd == BTCommand::LOAD_PROFILE) {
-            String profilePath = "/profiles/" + value;
-            storage_save_profile_path_nvs(profilePath.c_str());
-            
+
+        if (cmd2 == BTCommand::LOAD_PROFILE) {
+            String path = "/profiles/" + value;
+            storage_save_profile_path_nvs(path.c_str());
             if (storage_load_profile()) {
-                SerialBT.println(BTResponse::OK);
-                bluetooth_log("Profile loaded: " + value);
+                ble_notify("OK");
             } else {
-                SerialBT.println("ERROR:Failed to load profile");
+                ble_notify("ERROR:Profile load failed");
             }
             return;
         }
     }
-    
-    // Nieznana komenda
-    SerialBT.println("ERROR:Unknown command");
+
+    ble_notify("ERROR:Unknown command");
 }
 
-void bluetooth_handle_communication() {
-    // Sprawdź połączenie
-    static bool wasConnected = false;
-    bool isConnected = bluetooth_is_connected();
-    
-    if (isConnected && !wasConnected) {
-        log_msg(LOG_LEVEL_INFO, "Bluetooth client connected");
-        SerialBT.println("WELCOME:Wedzarnia ESP32 v3.4");
-        bluetooth_send_status();
-    } else if (!isConnected && wasConnected) {
-        log_msg(LOG_LEVEL_INFO, "Bluetooth client disconnected");
+// ======================================================
+// Główna pętla - wywołuj w loop()
+// ======================================================
+void ble_handle() {
+    // 1. Obsługa zdarzenia połączenia/rozłączenia
+    if (deviceConnected && !prevConnected) {
+        prevConnected = true;
+        // Powitanie i natychmiastowy status
+        ble_notify("WELCOME:Wedzarnia S3 v3.5 BLE");
+        delay(50);
+        ble_send_status();
+        lastStatusMs = millis();
     }
-    wasConnected = isConnected;
-    
-    // Odbierz komendy
-    while (SerialBT.available()) {
-        char c = SerialBT.read();
-        
-        if (c == '\n' || c == '\r') {
-            if (btCommandBuffer.length() > 0) {
-                bluetooth_parse_command(btCommandBuffer);
-                btCommandBuffer = "";
-            }
-        } else {
-            btCommandBuffer += c;
-            
-            // Zabezpieczenie przed przepełnieniem bufora
-            if (btCommandBuffer.length() > 128) {
-                btCommandBuffer = "";
-                SerialBT.println("ERROR:Command too long");
-            }
-        }
+    if (!deviceConnected && prevConnected) {
+        prevConnected = false;
     }
-    
-    // Automatyczne wysyłanie statusu co 2 sekundy
-    if (isConnected && (millis() - lastStatusSend > STATUS_SEND_INTERVAL)) {
-        bluetooth_send_status();
-        lastStatusSend = millis();
+
+    // 2. Wykonaj oczekującą komendę
+    portENTER_CRITICAL(&commandMux);
+    bool hasPending = commandPending;
+    char localCmd[128] = {0};
+    if (hasPending) {
+        memcpy(localCmd, commandBuf, sizeof(localCmd));
+        commandPending = false;
+    }
+    portEXIT_CRITICAL(&commandMux);
+
+    if (hasPending) {
+        executeCommand(localCmd);
+    }
+
+    // 3. Automatyczny status co 2 sekundy
+    if (deviceConnected && (millis() - lastStatusMs >= STATUS_INTERVAL_MS)) {
+        ble_send_status();
+        lastStatusMs = millis();
     }
 }
