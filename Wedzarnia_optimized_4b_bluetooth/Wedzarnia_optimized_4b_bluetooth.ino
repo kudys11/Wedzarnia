@@ -69,7 +69,7 @@ void setup() {
     esp_task_wdt_reset();
     
     // 13. Inicjalizacja Bluetooth (NOWE!)
-    bluetooth_init();
+    ble_init();
     esp_task_wdt_reset();
     
     // Debug: Sprawdz czy WiFi dziala
@@ -132,7 +132,7 @@ void setup() {
 
 void loop() {
     // NOWE: Obsługa komunikacji Bluetooth
-    bluetooth_handle_communication();
+    ble_handle();
     
     // Sprawdz czy czas na tryb niskiego poboru mocy
     if (shouldEnterLowPower()) {
