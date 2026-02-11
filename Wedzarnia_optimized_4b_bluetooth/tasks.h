@@ -1,9 +1,22 @@
 // tasks.h - Zmodernizowana wersja
-#pragma once
-#include <Arduino.h>
+#ifndef TASKS_H
+#define TASKS_H
 
-// Tworzenie wszystkich zadań
+#include "Arduino.h"
+
+// Deklaracje funkcji tworzących zadania
 void tasks_create_all();
 
-// Status watchdog
-String getTaskWatchdogStatus();
+// Deklaracje samych zadań
+void taskControl(void* pv);
+void taskSensors(void* pv);
+void taskUI(void* pv);
+void taskWeb(void* pv);
+void taskWiFi(void* pv);
+void taskMonitor(void* pv);
+
+// >> TUTAJ JEST TA LINIA <<
+// Udostępnia funkcję inicjalizacji watchdoga, aby mogła być wywołana w setup()
+void watchdog_init();
+
+#endif // TASKS_H
