@@ -97,6 +97,11 @@ static void updateText(int16_t x, int16_t y, int16_t w, int16_t h,
         display.setCursor(x, y);
         display.setTextColor(color);
         display.print(newText);
+        
+        // Debug log
+        log_msg(LOG_LEVEL_DEBUG, 
+                String("updateText: ") + oldText + " -> " + newText + 
+                " size:" + textSize + " at (" + x + "," + y + ")");
     }
 }
 
@@ -944,23 +949,35 @@ void ui_update_display() {
                 display.setCursor(5, 145);
                 display.print("EXIT - Zatrzymaj");
 
-            } else if (st == ProcessState::RUNNING_MANUAL) {
-                if(force_redraw || displayCache.needsRedraw) { 
-                    display.setCursor(0, 90); 
-                    display.print("Czas pracy:"); 
-                }
-                unsigned long elapsedSec = (millis() - processStartTime) / 1000;
-                formatTime(buf, sizeof(buf), elapsedSec);
-                updateTextAutoSize(10, 105, 120, 
-                                  displayCache.elapsedStr, 
-                                  buf, 
-                                  ST77XX_GREEN);
-                displayCache.elapsedStr = buf;
-                
-                display.fillRect(0, 145, display.width(), 16, ST77XX_BLACK); // Czyści prostokąt od (0, 145)
-                display.setCursor(5, 145);
-                display.print("EXIT - Zatrzymaj");
-            }
+} else if (st == ProcessState::RUNNING_MANUAL) {
+    if(force_redraw || displayCache.needsRedraw) { 
+        display.setCursor(0, 90); 
+        display.print("Czas pracy:"); 
+    }
+    
+    unsigned long elapsedSec = (millis() - processStartTime) / 1000;
+    formatTime(buf, sizeof(buf), elapsedSec);
+
+    // --- KLUCZOWA POPRAWKA ---
+    // 1. USTAW poprawny rozmiar czcionki dla licznika PRZED jego aktualizacją.
+    display.setTextSize(2); // Użyj rozmiaru, jaki chcesz mieć dla licznika (np. 2)
+
+    // 2. DOPIERO TERAZ wywołaj funkcję aktualizującą
+    updateTextAutoSize(10, 105, 120, 
+                       displayCache.elapsedStr, 
+                       buf, 
+                       ST77XX_GREEN);
+    displayCache.elapsedStr = buf;
+    
+    // 3. Ustaw rozmiar czcionki dla reszty napisów
+    display.setTextSize(1);
+    
+    // Wyczyść obszar instrukcji (dobre praktyki z poprzedniej odpowiedzi)
+    display.fillRect(0, 145, display.width(), 16, ST77XX_BLACK); 
+    display.setCursor(5, 145);
+    display.print("EXIT - Zatrzymaj");
+}
+
         } else {
             // Ekran glowny (IDLE)
             display.setTextSize(2);
