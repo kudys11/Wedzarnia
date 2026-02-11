@@ -99,7 +99,7 @@ static void updateText(int16_t x, int16_t y, int16_t w, int16_t h,
         display.print(newText);
         
         // Debug log
-        log_msg(LOG_LEVEL_DEBUG, 
+        log_msg(APP_LOG_LEVEL_DEBUG, 
                 String("updateText: ") + oldText + " -> " + newText + 
                 " size:" + textSize + " at (" + x + "," + y + ")");
     }
@@ -178,7 +178,7 @@ static void handleSystemSettingsAction() {
     
     switch(systemSettingsIndex) {
         case 0: // WiFi
-            log_msg(LOG_LEVEL_INFO, "Opening WiFi settings...");
+            log_msg(APP_LOG_LEVEL_INFO, "Opening WiFi settings...");
             display.setCursor(10, 20);
             display.print("USTAWIENIA WiFi");
             display.drawFastHLine(10, 35, 108, ST77XX_WHITE);
@@ -212,7 +212,7 @@ static void handleSystemSettingsAction() {
             break;
             
         case 1: // Kalibracja
-            log_msg(LOG_LEVEL_INFO, "Starting sensor calibration...");
+            log_msg(APP_LOG_LEVEL_INFO, "Starting sensor calibration...");
             display.setCursor(10, 50);
             display.print("KALIBRACJA");
             display.drawFastHLine(10, 65, 108, ST77XX_YELLOW);
@@ -244,7 +244,7 @@ static void handleSystemSettingsAction() {
             break;
             
         case 2: // Backup
-            log_msg(LOG_LEVEL_INFO, "Creating system backup...");
+            log_msg(APP_LOG_LEVEL_INFO, "Creating system backup...");
             display.setCursor(10, 50);
             display.print("BACKUP SYSTEMU");
             display.drawFastHLine(10, 65, 108, ST77XX_GREEN);
@@ -270,7 +270,7 @@ static void handleSystemSettingsAction() {
             
         case 3: // Reset statystyk
             {
-                log_msg(LOG_LEVEL_INFO, "Resetting statistics...");
+                log_msg(APP_LOG_LEVEL_INFO, "Resetting statistics...");
                 display.setCursor(10, 50);
                 display.print("RESET STATYSTYK");
                 display.drawFastHLine(10, 65, 108, ST77XX_RED);
@@ -331,7 +331,7 @@ static void handleSystemSettingsAction() {
             
         case 4: // Informacje systemowe
             {
-                log_msg(LOG_LEVEL_INFO, "Displaying system info...");
+                log_msg(APP_LOG_LEVEL_INFO, "Displaying system info...");
                 display.setCursor(10, 20);
                 display.print("INFORMACJE SYSTEMOWE");
                 display.drawFastHLine(10, 35, 108, ST77XX_CYAN);
@@ -584,7 +584,7 @@ void ui_handle_buttons() {
                                 // Kalibracja
                                 currentUiState = UiState::UI_STATE_IDLE;
                                 buzzerBeep(3, 100, 100);
-                                log_msg(LOG_LEVEL_INFO, "Calibration menu selected");
+                                log_msg(APP_LOG_LEVEL_INFO, "Calibration menu selected");
                             }
                         }
                         break;
@@ -727,23 +727,23 @@ void ui_handle_buttons() {
                             systemSettingsIndex = (systemSettingsIndex - 1 + SYSTEM_SETTINGS_ITEMS) % SYSTEM_SETTINGS_ITEMS;
                             force_redraw = true;
                             displayCache.needsRedraw = true;
-                            log_msg(LOG_LEVEL_DEBUG, "System Settings UP -> index: " + String(systemSettingsIndex));
+                            log_msg(APP_LOG_LEVEL_DEBUG, "System Settings UP -> index: " + String(systemSettingsIndex));
                         }
                         else if (pin == PIN_BTN_DOWN) {
                             systemSettingsIndex = (systemSettingsIndex + 1) % SYSTEM_SETTINGS_ITEMS;
                             force_redraw = true;
                             displayCache.needsRedraw = true;
-                            log_msg(LOG_LEVEL_DEBUG, "System Settings DOWN -> index: " + String(systemSettingsIndex));
+                            log_msg(APP_LOG_LEVEL_DEBUG, "System Settings DOWN -> index: " + String(systemSettingsIndex));
                         }
                         else if (pin == PIN_BTN_ENTER) {
-                            log_msg(LOG_LEVEL_INFO, "System Settings ENTER -> action: " + String(systemSettingsIndex));
+                            log_msg(APP_LOG_LEVEL_INFO, "System Settings ENTER -> action: " + String(systemSettingsIndex));
                             handleSystemSettingsAction();
                         }
                         else if (pin == PIN_BTN_EXIT) { 
                             currentUiState = UiState::UI_STATE_MENU_MAIN;
                             systemSettingsIndex = 0;
                             ui_transition_effect(false);
-                            log_msg(LOG_LEVEL_INFO, "System Settings EXIT to main menu");
+                            log_msg(APP_LOG_LEVEL_INFO, "System Settings EXIT to main menu");
                         }
                         break;
                         
@@ -767,7 +767,7 @@ void ui_handle_buttons() {
                             inSubMenu = false;
                             force_redraw = true;
                             displayCache.needsRedraw = true;
-                            log_msg(LOG_LEVEL_INFO, "WiFi Settings EXIT to system settings");
+                            log_msg(APP_LOG_LEVEL_INFO, "WiFi Settings EXIT to system settings");
                         }
                         break;
                         
