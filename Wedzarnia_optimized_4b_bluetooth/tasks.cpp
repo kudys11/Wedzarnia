@@ -33,7 +33,7 @@ static void watchdog_init() {
         .trigger_panic = true 
     };
     esp_task_wdt_reconfigure(&wdt_config);
-    log_msg(LOG_LEVEL_INFO, "Watchdog initialized (" + String(WDT_TIMEOUT) + "s timeout)");
+    log_msg(APP_LOG_LEVEL_INFO, "Watchdog initialized (" + String(WDT_TIMEOUT) + "s timeout)");
 }
 
 static void checkTaskWatchdog(int taskIndex) {
@@ -43,7 +43,7 @@ static void checkTaskWatchdog(int taskIndex) {
     if (now - wd.lastReset > pdMS_TO_TICKS(TASK_WATCHDOG_TIMEOUT)) {
         if (!wd.timeoutDetected) {
             wd.timeoutDetected = true;
-            log_msg(LOG_LEVEL_ERROR, String(wd.taskName) + " task timeout detected!");
+            log_msg(APP_LOG_LEVEL_ERROR, String(wd.taskName) + " task timeout detected!");
             
             // Przywróć bezpieczny stan dla krytycznych zadań
             if (taskIndex == 0) { // Control task
@@ -64,7 +64,7 @@ void taskControl(void* pv) {
     int taskIndex = 0;
     taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
     
-    log_msg(LOG_LEVEL_INFO, "Control task started");
+    log_msg(APP_LOG_LEVEL_INFO, "Control task started");
     
     for (;;) {
         esp_task_wdt_reset();
@@ -83,7 +83,7 @@ void taskSensors(void* pv) {
     int taskIndex = 1;
     taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
     
-    log_msg(LOG_LEVEL_INFO, "Sensors task started");
+    log_msg(APP_LOG_LEVEL_INFO, "Sensors task started");
     
     for (;;) {
         esp_task_wdt_reset();
@@ -104,7 +104,7 @@ void taskUI(void* pv) {
     int taskIndex = 2;
     taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
     
-    log_msg(LOG_LEVEL_INFO, "UI task started");
+    log_msg(APP_LOG_LEVEL_INFO, "UI task started");
     
     for (;;) {
         esp_task_wdt_reset();
@@ -125,7 +125,7 @@ void taskWeb(void* pv) {
     int taskIndex = 3;
     taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
     
-    log_msg(LOG_LEVEL_INFO, "Web task started");
+    log_msg(APP_LOG_LEVEL_INFO, "Web task started");
     
     for (;;) {
         esp_task_wdt_reset();
@@ -144,7 +144,7 @@ void taskWiFi(void* pv) {
     int taskIndex = 4;
     taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
     
-    log_msg(LOG_LEVEL_INFO, "WiFi task started");
+    log_msg(APP_LOG_LEVEL_INFO, "WiFi task started");
     
     for (;;) {
         esp_task_wdt_reset();
@@ -163,7 +163,7 @@ void taskMonitor(void* pv) {
     int taskIndex = 5;
     taskWatchdogs[taskIndex].lastReset = xTaskGetTickCount();
     
-    log_msg(LOG_LEVEL_INFO, "Monitor task started");
+    log_msg(APP_LOG_LEVEL_INFO, "Monitor task started");
     
     unsigned long lastHeapLog = 0;
     unsigned long lastStatsLog = 0;
@@ -181,10 +181,10 @@ void taskMonitor(void* pv) {
             uint32_t freeHeap = ESP.getFreeHeap();
             uint32_t minHeap = ESP.getMinFreeHeap();
             
-            log_msg(LOG_LEVEL_INFO, "[HEAP] Free: " + String(freeHeap) + " B, Min: " + String(minHeap) + " B");
+            log_msg(APP_LOG_LEVEL_INFO, "[HEAP] Free: " + String(freeHeap) + " B, Min: " + String(minHeap) + " B");
             
             if (freeHeap < 20000) {
-                log_msg(LOG_LEVEL_WARN, "!!! LOW MEMORY WARNING !!!");
+                log_msg(APP_LOG_LEVEL_WARN, "!!! LOW MEMORY WARNING !!!");
                 buzzerBeep(2, 100, 100);
             }
         }
@@ -195,7 +195,7 @@ void taskMonitor(void* pv) {
             for (int i = 0; i < 6; i++) {
                 checkTaskWatchdog(i);
                 if (taskWatchdogs[i].timeoutDetected) {
-                    log_msg(LOG_LEVEL_ERROR, String(taskWatchdogs[i].taskName) + " task is hung!");
+                    log_msg(APP_LOG_LEVEL_ERROR, String(taskWatchdogs[i].taskName) + " task is hung!");
                 }
             }
         }
@@ -213,10 +213,10 @@ void taskMonitor(void* pv) {
                     unsigned long runMins = (stats.totalRunTime % 3600000) / 60000;
                     unsigned long heatPercent = (stats.activeHeatingTime * 100) / stats.totalRunTime;
                     
-                    log_msg(LOG_LEVEL_INFO, "[STATS] Runtime: " + String(runHours) + "h " + String(runMins) + "m");
-                    log_msg(LOG_LEVEL_INFO, "[STATS] Heating: " + String(heatPercent) + "%, Avg temp: " + 
+                    log_msg(APP_LOG_LEVEL_INFO, "[STATS] Runtime: " + String(runHours) + "h " + String(runMins) + "m");
+                    log_msg(APP_LOG_LEVEL_INFO, "[STATS] Heating: " + String(heatPercent) + "%, Avg temp: " + 
                             String(stats.avgTemp, 1) + "°C");
-                    log_msg(LOG_LEVEL_INFO, "[STATS] Steps: " + String(stats.stepChanges) + 
+                    log_msg(APP_LOG_LEVEL_INFO, "[STATS] Steps: " + String(stats.stepChanges) + 
                             ", Pauses: " + String(stats.pauseCount));
                 }
             }
@@ -226,7 +226,7 @@ void taskMonitor(void* pv) {
                 WiFiStats wifiStats = wifi_get_stats();
                 unsigned long upHours = wifiStats.totalUptime / 3600000;
                 unsigned long downHours = wifiStats.totalDowntime / 3600000;
-                log_msg(LOG_LEVEL_INFO, "[WiFi] Up: " + String(upHours) + "h, Down: " + 
+                log_msg(APP_LOG_LEVEL_INFO, "[WiFi] Up: " + String(upHours) + "h, Down: " + 
                         String(downHours) + "h, Disconnects: " + String(wifiStats.disconnectCount));
             }
         }
@@ -250,7 +250,7 @@ void tasks_create_all() {
     xTaskCreatePinnedToCore(taskWiFi, "WiFi", 4096, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(taskMonitor, "Monitor", 4096, NULL, 1, NULL, 0);
     
-    log_msg(LOG_LEVEL_INFO, "All tasks created successfully");
+    log_msg(APP_LOG_LEVEL_INFO, "All tasks created successfully");
 }
 
 // Nowa funkcja: status watchdog
