@@ -10,9 +10,8 @@
 #include <esp_task_wdt.h>
 
 // Konfiguruje wbudowany w ESP32 watchdog (TWDT).
-// 'trigger_panic = true' powoduje wygenerowanie szczegółowego raportu błędu zamiast cichego restartu.
-// Używamy `reconfigure`, ponieważ TWDT może być już domyślnie aktywny po starcie systemu.
-static void watchdog_init() {
+// Słowo 'static' zostało usunięte, aby funkcja była dostępna z pliku .ino
+void watchdog_init() {
     esp_task_wdt_config_t wdt_config = {
         .timeout_ms = WDT_TIMEOUT * 1000,
         .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
@@ -139,21 +138,18 @@ void taskMonitor(void* pv) {
 }
 
 void tasks_create_all() {
-    watchdog_init();
-    
-    // === KLUCZOWA ZMIANA: ZWIĘKSZENIE ROZMIARU STOSU DLA ZADAŃ ===
-    // Przyczyną restartów było najprawdopodobniej przepełnienie stosu w jednym z zadań.
+    // Wywołanie watchdog_init() zostało przeniesione do głównej funkcji setup() w pliku .ino
+    // Jest to kluczowe, aby watchdog był gotowy przed inicjalizacją innych bibliotek (np. BLE).
     
     // Core 1: Zadania krytyczne (interfejs, sterowanie, czujniki)
-    xTaskCreatePinnedToCore(taskControl, "Control", 8192, NULL, 3, NULL, 1);  // Było 4096
-    xTaskCreatePinnedToCore(taskSensors, "Sensors", 8192, NULL, 2, NULL, 1);  // Było 4096
-    xTaskCreatePinnedToCore(taskUI, "UI", 8192, NULL, 2, NULL, 1);          // Było 4096
+    xTaskCreatePinnedToCore(taskControl, "Control", 8192, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(taskSensors, "Sensors", 8192, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(taskUI, "UI", 8192, NULL, 2, NULL, 1);
     
     // Core 0: Zadania sieciowe i monitoring
-    xTaskCreatePinnedToCore(taskWeb, "Web", 12288, NULL, 1, NULL, 0);       // Było 10240
-    xTaskCreatePinnedToCore(taskWiFi, "WiFi", 8192, NULL, 1, NULL, 0);        // Było 4096
-    xTaskCreatePinnedToCore(taskMonitor, "Monitor", 8192, NULL, 1, NULL, 0); // Było 4096
+    xTaskCreatePinnedToCore(taskWeb, "Web", 12288, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(taskWiFi, "WiFi", 8192, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(taskMonitor, "Monitor", 8192, NULL, 1, NULL, 0);
     
-    log_msg(APP_LOG_LEVEL_INFO, "All tasks created with increased stack size");
+    log_msg(APP_LOG_LEVEL_INFO, "All tasks created successfully");
 }
-
