@@ -1,4 +1,4 @@
-// ui.cpp - Zaktualizowana wersja bez custom_font.h
+// ui.cpp - Zaktualizowana wersja z ikonami z icons.h
 #include "ui.h"
 #include "config.h"
 #include "state.h"
@@ -6,6 +6,7 @@
 #include "storage.h"
 #include "process.h"
 #include "sensors.h"
+#include "icons.h"
 #include <climits>
 #include <vector>
 #include <ArduinoJson.h>
@@ -60,6 +61,30 @@ struct DisplayCache {
 static DisplayCache displayCache;
 
 // ============================================================
+// FUNKCJA POMOCNICZA DO RYSOWANIA IKON (16x16 px, 2 bajty/wiersz)
+// ============================================================
+
+/**
+ * Rysuje ikone 16x16 px z tablicy PROGMEM (format: 2 bajty na wiersz, MSB first).
+ * @param x     Pozycja X lewego gornego rogu
+ * @param y     Pozycja Y lewego gornego rogu
+ * @param icon  Wskaznik do tablicy PROGMEM z danymi ikony
+ * @param color Kolor pikseli ikony
+ */
+static void drawIcon16(int16_t x, int16_t y, const unsigned char* icon, uint16_t color) {
+    for (int row = 0; row < 16; row++) {
+        uint8_t hi = pgm_read_byte(&icon[row * 2]);
+        uint8_t lo = pgm_read_byte(&icon[row * 2 + 1]);
+        uint16_t bits = ((uint16_t)hi << 8) | lo;
+        for (int col = 0; col < 16; col++) {
+            if (bits & (0x8000 >> col)) {
+                display.drawPixel(x + col, y + row, color);
+            }
+        }
+    }
+}
+
+// ============================================================
 // FUNKCJE POMOCNICZE DLA WYSWIETLACZA
 // ============================================================
 
@@ -98,7 +123,6 @@ static void updateText(int16_t x, int16_t y, int16_t w, int16_t h,
         display.setTextColor(color);
         display.print(newText);
         
-        // Debug log
         log_msg(LOG_LEVEL_DEBUG, 
                 String("updateText: ") + oldText + " -> " + newText + 
                 " size:" + textSize + " at (" + x + "," + y + ")");
@@ -154,14 +178,26 @@ static void ui_transition_effect(bool forward) {
 }
 
 static void showDiagnosticsScreen() {
+    // Ikona informacyjna (TIME jako "zegar systemu") w naglowku
+    drawIcon16(0, 74, ICON_TIME, ST77XX_CYAN);
     display.setTextSize(1);
-    display.setCursor(0, 80);
-    display.printf("Pamiec: %d B", ESP.getFreeHeap());
+    display.setTextColor(ST77XX_CYAN);
+    display.setCursor(20, 78);
+    display.print("DIAGNOSTYKA");
+
+    display.setTextColor(ST77XX_WHITE);
     display.setCursor(0, 95);
+    display.printf("Pamiec: %d B", ESP.getFreeHeap());
+
+    // Ikona WiFi przy statusie sieci
+    drawIcon16(0, 107, ICON_WIFI, 
+               WiFi.status() == WL_CONNECTED ? ST77XX_GREEN : ST77XX_RED);
+    display.setCursor(20, 111);
     display.printf("WiFi: %s", WiFi.status() == WL_CONNECTED ? "OK" : "OFF");
-    display.setCursor(0, 110);
+
+    display.setCursor(0, 124);
     display.printf("Karta SD: %s", SD.cardType() != CARD_NONE ? "OK" : "ERR");
-    display.setCursor(0, 125);
+    display.setCursor(0, 137);
     display.printf("Czas pracy: %lu s", millis() / 1000);
 }
 
@@ -179,7 +215,10 @@ static void handleSystemSettingsAction() {
     switch(systemSettingsIndex) {
         case 0: // WiFi
             log_msg(LOG_LEVEL_INFO, "Opening WiFi settings...");
-            display.setCursor(10, 20);
+
+            // Ikona WiFi w naglowku
+            drawIcon16(0, 15, ICON_WIFI, ST77XX_CYAN);
+            display.setCursor(20, 20);
             display.print("USTAWIENIA WiFi");
             display.drawFastHLine(10, 35, 108, ST77XX_WHITE);
             
@@ -213,14 +252,16 @@ static void handleSystemSettingsAction() {
             
         case 1: // Kalibracja
             log_msg(LOG_LEVEL_INFO, "Starting sensor calibration...");
-            display.setCursor(10, 50);
+
+            // Ikona termometru w naglowku kalibracji
+            drawIcon16(0, 35, ICON_TEMP, ST77XX_YELLOW);
+            display.setCursor(20, 50);
             display.print("KALIBRACJA");
             display.drawFastHLine(10, 65, 108, ST77XX_YELLOW);
             
             display.setCursor(10, 85);
             display.print("Identyfikacja czujnikow...");
             
-            // Wymus ponowne przypisanie czujnikow
             identifyAndAssignSensors();
             
             display.setCursor(10, 105);
@@ -233,6 +274,8 @@ static void handleSystemSettingsAction() {
                 buzzerBeep(3, 100, 100);
             } else {
                 display.print("Blad kalibracji!");
+                // Ikona alarmu przy bledzie
+                drawIcon16(100, 100, ICON_ALERT, ST77XX_RED);
                 buzzerBeep(5, 100, 100);
             }
             
@@ -252,7 +295,6 @@ static void handleSystemSettingsAction() {
             display.setCursor(10, 85);
             display.print("Tworzenie backup...");
             
-            // Utworz backup konfiguracji
             storage_backup_config();
             
             display.setCursor(10, 105);
@@ -271,7 +313,10 @@ static void handleSystemSettingsAction() {
         case 3: // Reset statystyk
             {
                 log_msg(LOG_LEVEL_INFO, "Resetting statistics...");
-                display.setCursor(10, 50);
+
+                // Ikona alarmu przy resecie
+                drawIcon16(0, 35, ICON_ALERT, ST77XX_RED);
+                display.setCursor(20, 50);
                 display.print("RESET STATYSTYK");
                 display.drawFastHLine(10, 65, 108, ST77XX_RED);
                 
@@ -332,7 +377,10 @@ static void handleSystemSettingsAction() {
         case 4: // Informacje systemowe
             {
                 log_msg(LOG_LEVEL_INFO, "Displaying system info...");
-                display.setCursor(10, 20);
+
+                // Ikona czasu (zegara) w naglowku informacji
+                drawIcon16(0, 15, ICON_TIME, ST77XX_CYAN);
+                display.setCursor(20, 20);
                 display.print("INFORMACJE SYSTEMOWE");
                 display.drawFastHLine(10, 35, 108, ST77XX_CYAN);
                 
@@ -342,8 +390,13 @@ static void handleSystemSettingsAction() {
                 display.print("Uptime: " + String(millis() / 1000) + "s");
                 display.setCursor(10, 80);
                 display.print("SD: " + String(SD.cardType() != CARD_NONE ? "OK" : "ERR"));
-                display.setCursor(10, 95);
+
+                // Ikona WiFi przy statusie
+                drawIcon16(0, 90, ICON_WIFI,
+                           WiFi.status() == WL_CONNECTED ? ST77XX_GREEN : ST77XX_RED);
+                display.setCursor(20, 95);
                 display.print("WiFi: " + String(WiFi.status() == WL_CONNECTED ? "OK" : "OFF"));
+
                 display.setCursor(10, 110);
                 display.print("Czujniki: " + String(sensors.getDeviceCount()));
                 display.setCursor(10, 125);
@@ -354,7 +407,6 @@ static void handleSystemSettingsAction() {
                 display.setCursor(10, 155);
                 display.print("EXIT - powrot");
                 
-                // Czekaj na EXIT
                 infoTimeout = millis() + 10000;
                 while (millis() < infoTimeout) {
                     if (digitalRead(PIN_BTN_EXIT) == LOW) {
@@ -378,7 +430,9 @@ static void handleWiFiSettingsAction() {
     
     switch(wifiSettingsIndex) {
         case 0: // Zmien SSID/Haslo
-            display.setCursor(10, 50);
+            // Ikona WiFi
+            drawIcon16(0, 35, ICON_WIFI, ST77XX_CYAN);
+            display.setCursor(20, 50);
             display.print("ZMIANA WiFi");
             display.setCursor(10, 70);
             display.print("Uzyj strony web:");
@@ -390,9 +444,12 @@ static void handleWiFiSettingsAction() {
             display.print("EXIT - powrot");
             break;
             
-        case 1: // Wlacz/Wlacz WiFi
+        case 1: // Wlacz/Wylacz WiFi
             {
-                display.setCursor(10, 50);
+                // Ikona WiFi
+                drawIcon16(0, 35, ICON_WIFI,
+                           WiFi.status() == WL_CONNECTED ? ST77XX_GREEN : ST77XX_RED);
+                display.setCursor(20, 50);
                 if (WiFi.status() == WL_CONNECTED) {
                     display.print("WYLACZ WiFi?");
                     display.setCursor(10, 70);
@@ -444,7 +501,9 @@ static void handleWiFiSettingsAction() {
             
         case 2: // Skanuj sieci
             {
-                display.setCursor(10, 50);
+                // Ikona WiFi przy skanowaniu
+                drawIcon16(0, 35, ICON_WIFI, ST77XX_YELLOW);
+                display.setCursor(20, 50);
                 display.print("SKANOWANIE SIECI");
                 display.setCursor(10, 70);
                 display.print("Prosze czekac...");
@@ -536,7 +595,6 @@ void ui_handle_buttons() {
                             confirmSelection = false; 
                             ui_transition_effect(true);
                         }
-                        // NOWE: Sprawdzenie przycisku DOWN w trybie AUTO dla przejscia do nastepnego kroku
                         if (pin == PIN_BTN_DOWN && proc_st == ProcessState::RUNNING_AUTO) {
                             currentUiState = UiState::UI_STATE_CONFIRM_NEXT_STEP;
                             confirmSelection = false;
@@ -581,7 +639,6 @@ void ui_handle_buttons() {
                                 ui_transition_effect(true);
                             }
                             else if (mainMenuIndex == 5) { 
-                                // Kalibracja
                                 currentUiState = UiState::UI_STATE_IDLE;
                                 buzzerBeep(3, 100, 100);
                                 log_msg(LOG_LEVEL_INFO, "Calibration menu selected");
@@ -704,7 +761,6 @@ void ui_handle_buttons() {
                         }
                         break;
                         
-                    // NOWY STAN: Potwierdzenie przejscia do nastepnego kroku
                     case UiState::UI_STATE_CONFIRM_NEXT_STEP:
                         if (pin == PIN_BTN_UP || pin == PIN_BTN_DOWN) { 
                             confirmSelection = !confirmSelection; 
@@ -777,9 +833,7 @@ void ui_handle_buttons() {
                             ui_transition_effect(false);
                         }
                         else if (pin == PIN_BTN_UP || pin == PIN_BTN_DOWN || pin == PIN_BTN_ENTER) {
-                            // Pozwol na interakcje z diagnostyka
                             buzzerBeep(1, 30, 0);
-                            // Mozesz dodac przewijanie informacji diagnostycznych
                         }
                         break;
                 }
@@ -858,56 +912,76 @@ void ui_update_display() {
     
     char buf[32];
     
-    // Tlo i podstawowe etykiety (tylko jesli potrzebne)
+    // -------------------------------------------------------
+    // NAGLOWEK EKRANU: ikony + etykiety temperatury
+    // -------------------------------------------------------
     if (force_redraw || displayCache.needsRedraw) {
         display.setTextWrap(false);
         display.setTextSize(1);
         display.setTextColor(ST77XX_WHITE);
-        display.setCursor(0, 5);  
+
+        // Ikona termometru (ICON_TEMP) przy T.kom
+        drawIcon16(0, 0, ICON_TEMP, ST77XX_ORANGE);
+        display.setCursor(18, 5);
         display.print("T.kom:");
-        display.setCursor(0, 27); 
+
+        // Ikona miesa (ICON_MEAT) przy T.mie
+        drawIcon16(0, 22, ICON_MEAT, ST77XX_YELLOW);
+        display.setCursor(18, 27);
         display.print("T.mie:");
+
         display.drawFastHLine(0, 46, SCREEN_WIDTH, ST77XX_DARKGREY);
         display.drawFastHLine(0, 72, SCREEN_WIDTH, ST77XX_DARKGREY);
     }
     
-    // Temperatura komory
-    updateTextAutoSize(48, 5, 80, 
+    // Wartosc temperatury komory
+    updateTextAutoSize(62, 5, 66, 
                       String(displayCache.chamberTemp, 1) + " C", 
                       String(tc, 1) + " C", 
                       ST77XX_ORANGE);
     displayCache.chamberTemp = tc;
     
-    // Temperatura miesa
-    updateTextAutoSize(48, 27, 80, 
+    // Wartosc temperatury miesa
+    updateTextAutoSize(62, 27, 66, 
                       String(displayCache.meatTemp, 1) + " C", 
                       String(tm, 1) + " C", 
                       ST77XX_YELLOW);
     displayCache.meatTemp = tm;
     
-    // Status i temperatura zadana
+    // -------------------------------------------------------
+    // PASEK STATUSU (miedzy liniami)
+    // -------------------------------------------------------
     const char* stateNameStr = getStateStringForDisplay(st);
     if (st == ProcessState::RUNNING_AUTO || st == ProcessState::RUNNING_MANUAL) {
-        if(force_redraw || displayCache.needsRedraw) { 
-            display.setTextSize(1); 
-            display.setCursor(0, 53); 
-            display.setTextColor(ST77XX_WHITE); 
-            display.print("T.set:"); 
+        if (force_redraw || displayCache.needsRedraw) {
+            // Ikona ognia przy T.set w trybie grzania
+            drawIcon16(0, 49, ICON_FIRE, ST77XX_RED);
+            display.setTextSize(1);
+            display.setCursor(18, 53);
+            display.setTextColor(ST77XX_WHITE);
+            display.print("T.set:");
         }
-        updateTextAutoSize(50, 53, 70, 
-                          String(displayCache.setTemp, 1) + " C", 
-                          String(ts, 1) + " C", 
+        updateTextAutoSize(64, 53, 64,
+                          String(displayCache.setTemp, 1) + " C",
+                          String(ts, 1) + " C",
                           ST77XX_CYAN);
         displayCache.setTemp = ts;
     } else {
-        updateTextAutoSize(5, 53, 118, 
+        // Ikona alarmu/pauzy gdy nie dziala normalnie
+        if (st == ProcessState::PAUSE_DOOR || st == ProcessState::PAUSE_SENSOR ||
+            st == ProcessState::PAUSE_OVERHEAT || st == ProcessState::PAUSE_USER) {
+            drawIcon16(0, 49, ICON_ALERT, ST77XX_RED);
+        }
+        updateTextAutoSize(18, 53, 110,
                           displayCache.stateString,
-                          String(stateNameStr), 
+                          String(stateNameStr),
                           ST77XX_CYAN);
     }
     displayCache.stateString = String(stateNameStr);
     
-    // Czyszczenie dolnej czesci ekranu przy zmianie stanu UI
+    // -------------------------------------------------------
+    // DOLNA CZESC EKRANU - zalezy od stanu UI
+    // -------------------------------------------------------
     if (currentUiState != lastUiState || force_redraw || displayCache.needsRedraw) {
         display.fillRect(0, 74, SCREEN_WIDTH, SCREEN_HEIGHT - 74, ST77XX_BLACK);
     }
@@ -916,116 +990,178 @@ void ui_update_display() {
         if (st != ProcessState::IDLE) {
             display.setTextSize(1);
             if (st == ProcessState::RUNNING_AUTO) {
-                // Nazwa kroku
-                updateText(0, 80, 128, 8, 
-                          displayCache.stepName, 
-                          String("Krok: ") + stepName, 
+                // --- Ikona PLAY + nazwa kroku ---
+                drawIcon16(0, 76, ICON_PLAY, ST77XX_GREEN);
+                updateText(18, 80, 110, 8,
+                          displayCache.stepName,
+                          String("Krok: ") + stepName,
                           ST77XX_WHITE, 1);
                 displayCache.stepName = String("Krok: ") + stepName;
 
-                // Czas uplyniety
+                // --- Ikona TIME + czas uplyniety ---
+                drawIcon16(0, 91, ICON_TIME, ST77XX_WHITE);
                 unsigned long elapsedSec = (millis() - stepStartTime) / 1000;
                 formatTime(buf, sizeof(buf), elapsedSec);
-                updateText(0, 95, 128, 8, 
-                          displayCache.elapsedStr, 
-                          String("Uplynelo: ") + buf, 
+                updateText(18, 95, 110, 8,
+                          displayCache.elapsedStr,
+                          String("Uplynelo: ") + buf,
                           ST77XX_WHITE, 1);
                 displayCache.elapsedStr = String("Uplynelo: ") + buf;
 
-                // Czas pozostaly
+                // --- Ikona TIME (jako pozostaly czas) ---
+                drawIcon16(0, 106, ICON_TIME, ST77XX_CYAN);
                 unsigned long totalSec = stepTotalTimeMs / 1000;
                 unsigned long remainingSec = (totalSec > elapsedSec) ? totalSec - elapsedSec : 0;
                 formatTime(buf, sizeof(buf), remainingSec);
-                updateText(0, 110, 128, 8, 
-                          displayCache.remainingStr, 
-                          String("Zostalo:  ") + buf, 
-                          ST77XX_WHITE, 1);
+                updateText(18, 110, 110, 8,
+                          displayCache.remainingStr,
+                          String("Zostalo:  ") + buf,
+                          ST77XX_CYAN, 1);
                 displayCache.remainingStr = String("Zostalo:  ") + buf;
-                
-                // DODANE: Instrukcje bez ikon dla trybu AUTO
+
+                // Instrukcje nawigacji
                 display.setCursor(5, 130);
+                display.setTextColor(ST77XX_WHITE);
                 display.print("DOWN - Nastepny krok");
-                
                 display.setCursor(5, 145);
                 display.print("EXIT - Zatrzymaj");
 
-} else if (st == ProcessState::RUNNING_MANUAL) {
-    if(force_redraw || displayCache.needsRedraw) { 
-        display.setCursor(0, 90); 
-        display.print("Czas pracy:"); 
-    }
-    
-    unsigned long elapsedSec = (millis() - processStartTime) / 1000;
-    formatTime(buf, sizeof(buf), elapsedSec);
+            } else if (st == ProcessState::RUNNING_MANUAL) {
+                // --- Ikona TIME + etykieta czasu pracy ---
+                drawIcon16(0, 76, ICON_TIME, ST77XX_GREEN);
+                if (force_redraw || displayCache.needsRedraw) {
+                    display.setTextSize(1);
+                    display.setTextColor(ST77XX_WHITE);
+                    display.setCursor(18, 80);
+                    display.print("Czas pracy:");
+                }
 
-    // --- KLUCZOWA POPRAWKA ---
-    // 1. USTAW poprawny rozmiar czcionki dla licznika PRZED jego aktualizacją.
-    display.setTextSize(2); // Użyj rozmiaru, jaki chcesz mieć dla licznika (np. 2)
+                // --- Ikona wentylatora (dekoracyjna, tryb manual) ---
+                drawIcon16(112, 76, ICON_FAN, ST77XX_CYAN);
 
-    // 2. DOPIERO TERAZ wywołaj funkcję aktualizującą
-    updateTextAutoSize(10, 105, 120, 
-                       displayCache.elapsedStr, 
-                       buf, 
-                       ST77XX_GREEN);
-    displayCache.elapsedStr = buf;
-    
-    // 3. Ustaw rozmiar czcionki dla reszty napisów
-    display.setTextSize(1);
-    
-    // Wyczyść obszar instrukcji (dobre praktyki z poprzedniej odpowiedzi)
-    display.fillRect(0, 145, display.width(), 16, ST77XX_BLACK); 
-    display.setCursor(5, 145);
-    display.print("EXIT - Zatrzymaj");
-}
+                unsigned long elapsedSec = (millis() - processStartTime) / 1000;
+                formatTime(buf, sizeof(buf), elapsedSec);
+
+                display.setTextSize(2);
+                updateTextAutoSize(10, 95, 108,
+                                   displayCache.elapsedStr,
+                                   buf,
+                                   ST77XX_GREEN);
+                displayCache.elapsedStr = buf;
+
+                display.setTextSize(1);
+                display.fillRect(0, 125, display.width(), 16, ST77XX_BLACK);
+                display.setCursor(5, 128);
+                display.setTextColor(ST77XX_WHITE);
+                display.print("EXIT - Zatrzymaj");
+            }
 
         } else {
-            // Ekran glowny (IDLE)
+            // --- Ekran IDLE (czuwanie) ---
+            // Ikona pauzy jako "gotowy / czekam"
+            drawIcon16(56, 82, ICON_PAUSE, ST77XX_DARKGREY);
             display.setTextSize(2);
-            display.setCursor(30, 90); 
-            display.print("Menu");
-            display.setCursor(25, 115);
+            display.setTextColor(ST77XX_WHITE);
+            display.setCursor(20, 105);
             display.print("ENTER");
+            display.setTextSize(1);
+            display.setCursor(30, 122);
+            display.print("= Menu");
         }
     } else {
         display.setTextSize(1);
         switch (currentUiState) {
+            // ------------------------------------------------
+            // MENU GLOWNE - kazda opcja ma ikone
+            // ------------------------------------------------
             case UiState::UI_STATE_MENU_MAIN:
-                display.setCursor(0, 80); 
-                display.setTextColor(mainMenuIndex == 0 ? ST77XX_GREEN : ST77XX_WHITE); 
-                display.print(">Start AUTO");
-                display.setCursor(0, 93); 
-                display.setTextColor(mainMenuIndex == 1 ? ST77XX_GREEN : ST77XX_WHITE); 
-                display.print(">Start MANUAL");
-                display.setCursor(0, 106); 
-                display.setTextColor(mainMenuIndex == 2 ? ST77XX_GREEN : ST77XX_WHITE); 
-                display.print(">Zatrzymaj");
-                display.setCursor(0, 119); 
-                display.setTextColor(mainMenuIndex == 3 ? ST77XX_GREEN : ST77XX_WHITE); 
-                display.print(">Ustawienia");
-                display.setCursor(70, 32); 
-                display.setTextColor(mainMenuIndex == 4 ? ST77XX_GREEN : ST77XX_WHITE); 
-                display.print(">D");
-                
-                // Dodaj napisy nawigacji
-                display.setCursor(10, 145);
-                display.print("UP/DOWN - Wybierz");
+                // 0: Start AUTO  -> ICON_PLAY
+                drawIcon16(0, 76,
+                           ICON_PLAY,
+                           mainMenuIndex == 0 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(18, 80);
+                display.setTextColor(mainMenuIndex == 0 ? ST77XX_GREEN : ST77XX_WHITE);
+                display.print("Start AUTO");
+
+                // 1: Start MANUAL -> ICON_FIRE
+                drawIcon16(0, 90,
+                           ICON_FIRE,
+                           mainMenuIndex == 1 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(18, 93);
+                display.setTextColor(mainMenuIndex == 1 ? ST77XX_GREEN : ST77XX_WHITE);
+                display.print("Start MANUAL");
+
+                // 2: Zatrzymaj -> ICON_PAUSE
+                drawIcon16(0, 104,
+                           ICON_PAUSE,
+                           mainMenuIndex == 2 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(18, 107);
+                display.setTextColor(mainMenuIndex == 2 ? ST77XX_GREEN : ST77XX_WHITE);
+                display.print("Zatrzymaj");
+
+                // 3: Ustawienia -> ICON_TEMP (symbol konfiguracji)
+                drawIcon16(0, 118,
+                           ICON_TEMP,
+                           mainMenuIndex == 3 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(18, 121);
+                display.setTextColor(mainMenuIndex == 3 ? ST77XX_GREEN : ST77XX_WHITE);
+                display.print("Ustawienia");
+
+                // 4: Diagnostyka -> ICON_ALERT
+                drawIcon16(0, 132,
+                           ICON_ALERT,
+                           mainMenuIndex == 4 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(18, 135);
+                display.setTextColor(mainMenuIndex == 4 ? ST77XX_GREEN : ST77XX_WHITE);
+                display.print("Diagnostyka");
+
+                // 5: Kalibracja -> ICON_MEAT
+                drawIcon16(0, 146,
+                           ICON_MEAT,
+                           mainMenuIndex == 5 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(18, 149);
+                display.setTextColor(mainMenuIndex == 5 ? ST77XX_GREEN : ST77XX_WHITE);
+                display.print("Kalibracja");
                 break;
                 
+            // ------------------------------------------------
+            // ZRODLO PROFILU
+            // ------------------------------------------------
             case UiState::UI_STATE_MENU_SOURCE:
-                display.setCursor(10, 90); 
-                display.setTextColor(sourceMenuIndex == 0 ? ST77XX_GREEN : ST77XX_WHITE); 
+                display.setTextColor(ST77XX_WHITE);
+                display.setCursor(10, 78);
+                display.print("Wybierz zrodlo:");
+                display.drawFastHLine(10, 88, 108, ST77XX_DARKGREY);
+
+                // Karta SD
+                drawIcon16(10, 92,
+                           ICON_TIME, // brak dedykowanej ikony SD, uzywamy TIME
+                           sourceMenuIndex == 0 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(30, 96);
+                display.setTextColor(sourceMenuIndex == 0 ? ST77XX_GREEN : ST77XX_WHITE);
                 display.print("Karta SD");
-                display.setCursor(10, 103); 
-                display.setTextColor(sourceMenuIndex == 1 ? ST77XX_GREEN : ST77XX_WHITE); 
+
+                // GitHub (WiFi)
+                drawIcon16(10, 108,
+                           ICON_WIFI,
+                           sourceMenuIndex == 1 ? ST77XX_GREEN : ST77XX_DARKGREY);
+                display.setCursor(30, 112);
+                display.setTextColor(sourceMenuIndex == 1 ? ST77XX_GREEN : ST77XX_WHITE);
                 display.print("GitHub");
-                
+
+                display.setTextColor(ST77XX_WHITE);
                 display.setCursor(10, 145);
                 display.print("UP/DOWN - Wybierz");
                 break;
                 
+            // ------------------------------------------------
+            // LISTA PROFILI
+            // ------------------------------------------------
             case UiState::UI_STATE_MENU_PROFILES:
                 if (profilesLoading) {
-                    display.setCursor(10, 95);
+                    drawIcon16(56, 82, ICON_TIME, ST77XX_YELLOW);
+                    display.setTextColor(ST77XX_WHITE);
+                    display.setCursor(10, 102);
                     display.print("Wczytywanie...");
                     String json_str = (sourceMenuIndex == 0) ? 
                         storage_list_profiles_json() : 
@@ -1040,99 +1176,150 @@ void ui_update_display() {
                     profilesLoading = false;
                     force_redraw = true;
                     displayCache.needsRedraw = true;
-                    ui_update_display(); 
+                    ui_update_display();
                     return;
-                } 
+                }
                 if (profileList.empty()) {
-                    display.setCursor(10, 95);
+                    drawIcon16(56, 82, ICON_ALERT, ST77XX_RED);
+                    display.setTextColor(ST77XX_WHITE);
+                    display.setCursor(10, 102);
                     display.print("Brak profili!");
                 } else {
                     display.setTextSize(1);
                     for (size_t i = 0; i < profileList.size(); i++) {
                         if (i < 6) {
                             display.setCursor(0, 80 + i * 13);
-                            if ((int)i == profileMenuIndex) { 
-                                display.setTextColor(ST77XX_GREEN); 
-                                display.print("> "); 
-                            }
-                            else { 
-                                display.setTextColor(ST77XX_WHITE); 
-                                display.print("  "); 
+                            if ((int)i == profileMenuIndex) {
+                                display.setTextColor(ST77XX_GREEN);
+                                display.print("> ");
+                            } else {
+                                display.setTextColor(ST77XX_WHITE);
+                                display.print("  ");
                             }
                             display.print(profileList[i]);
                         }
                     }
                 }
-                
-                display.setCursor(10, 145);
+                display.setTextColor(ST77XX_WHITE);
+                display.setCursor(10, 151);
                 display.print("ENTER - Wybierz");
                 break;
                 
+            // ------------------------------------------------
+            // EDYCJA TRYBU MANUALNEGO
+            // ------------------------------------------------
             case UiState::UI_STATE_EDIT_MANUAL:
                 display.setTextSize(1);
-                display.setCursor(0, 80); 
-                display.setTextColor(manualEditIndex == 0 ? ST77XX_YELLOW : ST77XX_WHITE); 
+
+                // Temperatura -> ICON_TEMP
+                drawIcon16(0, 76,
+                           ICON_TEMP,
+                           manualEditIndex == 0 ? ST77XX_YELLOW : ST77XX_DARKGREY);
+                display.setCursor(18, 80);
+                display.setTextColor(manualEditIndex == 0 ? ST77XX_YELLOW : ST77XX_WHITE);
                 display.print("Temp: " + String(ts, 1) + " C");
-                display.setCursor(0, 92); 
-                display.setTextColor(manualEditIndex == 1 ? ST77XX_YELLOW : ST77XX_WHITE); 
+
+                // Moc -> ICON_FIRE
+                drawIcon16(0, 89,
+                           ICON_FIRE,
+                           manualEditIndex == 1 ? ST77XX_YELLOW : ST77XX_DARKGREY);
+                display.setCursor(18, 92);
+                display.setTextColor(manualEditIndex == 1 ? ST77XX_YELLOW : ST77XX_WHITE);
                 display.print("Moc: " + String(pm));
-                display.setCursor(0, 104); 
-                display.setTextColor(manualEditIndex == 2 ? ST77XX_YELLOW : ST77XX_WHITE); 
+
+                // Dym -> ICON_MEAT (brak ikony dymu, mieso = wedzone)
+                drawIcon16(0, 101,
+                           ICON_MEAT,
+                           manualEditIndex == 2 ? ST77XX_YELLOW : ST77XX_DARKGREY);
+                display.setCursor(18, 104);
+                display.setTextColor(manualEditIndex == 2 ? ST77XX_YELLOW : ST77XX_WHITE);
                 display.print("Dym: " + String(smoke));
-                display.setCursor(0, 116); 
+
+                // Wentylator -> ICON_FAN
+                drawIcon16(0, 113,
+                           ICON_FAN,
+                           manualEditIndex == 3 ? ST77XX_YELLOW : ST77XX_DARKGREY);
+                display.setCursor(18, 116);
                 display.setTextColor(manualEditIndex == 3 ? ST77XX_YELLOW : ST77XX_WHITE);
-                if(fm == 0) display.print("Went: OFF");
+                if (fm == 0)      display.print("Went: OFF");
                 else if (fm == 1) display.print("Went: ON");
-                else display.print("Went: CYKL");
+                else              display.print("Went: CYKL");
+
+                // START -> ICON_PLAY
+                drawIcon16(0, 126,
+                           ICON_PLAY,
+                           manualEditIndex == 4 ? ST77XX_GREEN : ST77XX_DARKGREY);
                 display.setTextSize(2);
-                display.setCursor(15, 135);
+                display.setCursor(20, 128);
+                display.setTextColor(manualEditIndex == 4 ? ST77XX_GREEN : ST77XX_WHITE);
                 display.print("START");
-                
-                // Dodaj legende klawiszy
+
                 display.setTextSize(1);
+                display.setTextColor(ST77XX_WHITE);
                 display.setCursor(0, 150);
                 display.print("UP/DOWN - Zmien");
                 break;
                 
+            // ------------------------------------------------
+            // POTWIERDZENIE ZATRZYMANIA
+            // ------------------------------------------------
             case UiState::UI_STATE_CONFIRM_ACTION:
-                display.setCursor(15, 95);
-                display.print("Na pewno?");
+                drawIcon16(56, 76, ICON_ALERT, ST77XX_RED);
+                display.setTextColor(ST77XX_WHITE);
+                display.setCursor(15, 96);
+                display.print("Na pewno zatrzymac?");
                 display.setTextSize(1);
-                display.setCursor(10, 120); 
-                display.setTextColor(!confirmSelection ? ST77XX_GREEN : ST77XX_WHITE); 
+                display.setCursor(10, 118);
+                display.setTextColor(!confirmSelection ? ST77XX_GREEN : ST77XX_WHITE);
                 display.print("NIE");
-                display.setCursor(70, 120); 
-                display.setTextColor(confirmSelection ? ST77XX_GREEN : ST77XX_WHITE); 
+                display.setCursor(70, 118);
+                display.setTextColor(confirmSelection ? ST77XX_GREEN : ST77XX_WHITE);
                 display.print("TAK");
-                
+                display.setTextColor(ST77XX_WHITE);
                 display.setCursor(10, 145);
                 display.print("ENTER - OK");
                 break;
                 
-            // NOWY EKRAN: Potwierdzenie przejscia do nastepnego kroku
+            // ------------------------------------------------
+            // POTWIERDZENIE NASTEPNEGO KROKU
+            // ------------------------------------------------
             case UiState::UI_STATE_CONFIRM_NEXT_STEP:
-                display.setCursor(10, 85);
+                drawIcon16(56, 76, ICON_PLAY, ST77XX_YELLOW);
+                display.setTextColor(ST77XX_WHITE);
+                display.setCursor(10, 96);
                 display.print("Nastepny krok?");
-                display.setCursor(10, 100);
-                display.print("Pominac biezacy krok?");
-                display.setCursor(10, 120); 
-                display.setTextColor(!confirmSelection ? ST77XX_GREEN : ST77XX_WHITE); 
+                display.setCursor(10, 108);
+                display.print("Pominac biezacy?");
+                display.setTextSize(1);
+                display.setCursor(10, 122);
+                display.setTextColor(!confirmSelection ? ST77XX_GREEN : ST77XX_WHITE);
                 display.print("NIE");
-                display.setCursor(70, 120); 
-                display.setTextColor(confirmSelection ? ST77XX_GREEN : ST77XX_WHITE); 
+                display.setCursor(70, 122);
+                display.setTextColor(confirmSelection ? ST77XX_GREEN : ST77XX_WHITE);
                 display.print("TAK");
-                
+                display.setTextColor(ST77XX_WHITE);
                 display.setCursor(10, 145);
                 display.print("ENTER - OK");
                 break;
                 
+            // ------------------------------------------------
+            // USTAWIENIA SYSTEMOWE
+            // ------------------------------------------------
             case UiState::UI_STATE_SYSTEM_SETTINGS:
                 {
+                    display.setTextColor(ST77XX_WHITE);
                     display.setCursor(10, 75);
                     display.print("USTAWIENIA SYSTEMU");
                     display.drawFastHLine(10, 85, 108, ST77XX_WHITE);
                     
-                    // Lista opcji z podswietleniem
+                    // Ikony dla kazdej opcji
+                    const unsigned char* settingsIcons[] = {
+                        ICON_WIFI,   // WiFi
+                        ICON_TEMP,   // Kalibracja
+                        ICON_TIME,   // Backup
+                        ICON_ALERT,  // Reset statystyk
+                        ICON_MEAT    // Informacje
+                    };
                     const char* settingsItems[] = {
                         "WiFi",
                         "Kalibracja",
@@ -1141,68 +1328,78 @@ void ui_update_display() {
                         "Informacje"
                     };
                     
-                    // Wyswietl 3 opcje naraz (scrollowanie)
                     int startIndex = max(0, min(systemSettingsIndex - 1, SYSTEM_SETTINGS_ITEMS - 3));
                     
                     for (int i = 0; i < min(3, SYSTEM_SETTINGS_ITEMS); i++) {
                         int itemIndex = startIndex + i;
-                        int yPos = 95 + i * 15;
+                        int yPos = 90 + i * 18;
+                        bool selected = (itemIndex == systemSettingsIndex);
                         
-                        if (itemIndex == systemSettingsIndex) {
-                            display.setTextColor(ST77XX_YELLOW);
-                            display.setCursor(5, yPos);
-                            display.print("> ");
-                        } else {
-                            display.setTextColor(ST77XX_WHITE);
-                            display.setCursor(5, yPos);
-                            display.print("  ");
-                        }
-                        
+                        drawIcon16(5, yPos,
+                                   settingsIcons[itemIndex],
+                                   selected ? ST77XX_YELLOW : ST77XX_DARKGREY);
+                        display.setCursor(24, yPos + 4);
+                        display.setTextColor(selected ? ST77XX_YELLOW : ST77XX_WHITE);
+                        if (selected) display.print("> ");
+                        else          display.print("  ");
                         display.print(settingsItems[itemIndex]);
                     }
                     
-                    display.setCursor(5, 145);
+                    display.setTextColor(ST77XX_WHITE);
+                    display.setCursor(5, 147);
                     display.print("ENTER - OK");
                 }
                 break;
                 
+            // ------------------------------------------------
+            // USTAWIENIA WiFi
+            // ------------------------------------------------
             case UiState::UI_STATE_WIFI_SETTINGS:
                 {
-                    display.setCursor(10, 75);
+                    drawIcon16(0, 74, ICON_WIFI, ST77XX_CYAN);
+                    display.setTextColor(ST77XX_WHITE);
+                    display.setCursor(20, 78);
                     display.print("USTAWIENIA WiFi");
-                    display.drawFastHLine(10, 85, 108, ST77XX_WHITE);
+                    display.drawFastHLine(10, 90, 108, ST77XX_WHITE);
                     
-                    // Opcje WiFi
                     const char* wifiItems[] = {
                         "Zmien SSID/Haslo",
                         "Wlacz/Wylacz",
                         "Skanuj sieci"
                     };
+                    const unsigned char* wifiIcons[] = {
+                        ICON_WIFI,
+                        ICON_PLAY,
+                        ICON_WIFI
+                    };
                     
-                    for (int i = 0; i < min(3, WIFI_SETTINGS_ITEMS); i++) {
-                        int yPos = 95 + i * 15;
+                    for (int i = 0; i < WIFI_SETTINGS_ITEMS; i++) {
+                        int yPos = 96 + i * 18;
+                        bool selected = (i == wifiSettingsIndex);
                         
-                        if (i == wifiSettingsIndex) {
-                            display.setTextColor(ST77XX_YELLOW);
-                            display.setCursor(5, yPos);
-                            display.print("> ");
-                        } else {
-                            display.setTextColor(ST77XX_WHITE);
-                            display.setCursor(5, yPos);
-                            display.print("  ");
-                        }
-                        
+                        drawIcon16(5, yPos,
+                                   wifiIcons[i],
+                                   selected ? ST77XX_YELLOW : ST77XX_DARKGREY);
+                        display.setCursor(24, yPos + 4);
+                        display.setTextColor(selected ? ST77XX_YELLOW : ST77XX_WHITE);
+                        if (selected) display.print("> ");
+                        else          display.print("  ");
                         display.print(wifiItems[i]);
                     }
                     
-                    display.setCursor(5, 145);
+                    display.setTextColor(ST77XX_WHITE);
+                    display.setCursor(5, 151);
                     display.print("ENTER - Wybierz");
                 }
                 break;
                 
+            // ------------------------------------------------
+            // DIAGNOSTYKA
+            // ------------------------------------------------
             case UiState::UI_STATE_DIAGNOSTICS:
                 showDiagnosticsScreen();
-                display.setCursor(10, 150);
+                display.setTextColor(ST77XX_WHITE);
+                display.setCursor(10, 155);
                 display.print("EXIT - Powrot");
                 break;
         }
@@ -1217,7 +1414,6 @@ void ui_update_display() {
 bool shouldEnterLowPowerMode() {
     unsigned long idleTime = millis() - lastUserActivity;
     
-    // Nie przechodz w tryb niskiego poboru jesli jestesmy w menu
     if (currentUiState == UiState::UI_STATE_SYSTEM_SETTINGS || 
         currentUiState == UiState::UI_STATE_DIAGNOSTICS ||
         currentUiState == UiState::UI_STATE_WIFI_SETTINGS) {
