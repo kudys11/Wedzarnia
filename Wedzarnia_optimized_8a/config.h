@@ -45,8 +45,8 @@ constexpr double CFG_Kd = 20.0;
 // --- Limity ---
 constexpr double CFG_T_MAX_SOFT = 130.0;
 constexpr double CFG_T_MIN_SET = 20.0;
-constexpr double CFG_T_MAX_SET = 130.0;
-constexpr unsigned long CFG_MAX_PROCESS_TIME_MS = 12UL * 60UL * 60UL * 1000UL; // 12h
+constexpr double CFG_T_MAX_SET = 125.0;
+constexpr unsigned long CFG_MAX_PROCESS_TIME_MS = 24UL * 60UL * 60UL * 1000UL; // 24h
 constexpr int CFG_SMOKE_PWM_MIN = 0;
 constexpr int CFG_SMOKE_PWM_MAX = 255;
 constexpr int CFG_POWERMODE_MIN = 1;
@@ -88,7 +88,7 @@ constexpr int DEFAULT_MEAT_SENSOR = 1;
 constexpr unsigned long SENSOR_ASSIGNMENT_CHECK = 10000;
 
 // --- Profil ---
-constexpr int MAX_STEPS = 8;
+constexpr int MAX_STEPS = 10;
 
 // --- Timeouty dla mutexów ---
 constexpr TickType_t CFG_MUTEX_TIMEOUT_MS = 1000;
