@@ -1,4 +1,5 @@
 // process.cpp - [FIX] Ochrona g_currentStep mutexem, eliminacja race conditions
+// [NEW]  Zabezpieczenie: grzałka ON bez wzrostu temperatury → PAUSE_HEATER_FAULT
 #include "process.h"
 #include "config.h"
 #include "state.h"
@@ -20,6 +21,128 @@ static AdaptivePID adaptivePid;
 // Historia temperatury dla predykcyjnego sterowania wentylatorem
 static double tempHistory[5] = {0};
 static int tempHistoryIndex = 0;
+
+// ======================================================
+// [NEW] MONITOR AWARII GRZAŁKI
+// ======================================================
+
+struct HeaterFaultMonitor {
+    double  tempAtWindowStart = 0.0;   // temperatura komory na początku okna pomiarowego
+    unsigned long windowStart = 0;     // millis() kiedy zaczęło się okno
+    bool    monitoring = false;        // czy okno jest aktywne
+};
+
+static HeaterFaultMonitor hfm;
+
+// Resetuje stan monitora – wywołuj przy każdym starcie i wznowieniu procesu
+void resetHeaterFaultMonitor() {
+    hfm.tempAtWindowStart = 0.0;
+    hfm.windowStart = 0;
+    hfm.monitoring = false;
+    log_msg(LOG_LEVEL_INFO, "Heater fault monitor reset");
+}
+
+/**
+ * checkHeaterEfficiency()
+ *
+ * Sprawdza, czy grzałka faktycznie podgrzewa komorę.
+ * Monitoring jest aktywny TYLKO gdy spełnione są WSZYSTKIE trzy warunki:
+ *   1. Proces jest w stanie RUNNING_AUTO lub RUNNING_MANUAL
+ *   2. Temperatura komory jest co najmniej HEATER_FAULT_MIN_ERROR (10°C) poniżej setpointu
+ *      → wyklucza fazę utrzymania temperatury, gdzie PID celowo redukuje moc
+ *   3. Wyjście PID przekracza HEATER_FAULT_MIN_PID (50%)
+ *      → grzałka faktycznie powinna grzać, a nie tylko delikatnie dogrzewać
+ *
+ * Okno pomiarowe trwa HEATER_NO_RISE_TIMEOUT_MS (20 minut).
+ * Jeśli w tym czasie temperatura nie wzrosła o HEATER_MIN_TEMP_RISE (2°C) → AWARIA.
+ * Jeśli wzrosła – okno przesuwa się do przodu (nowy punkt startowy = aktualna temp).
+ * Gdy któryś z warunków odpada (np. temp doszła do celu) → monitoring wyłączany, reset.
+ */
+static void checkHeaterEfficiency() {
+    if (!state_lock()) return;
+    double currentTemp  = g_tChamber;
+    double setpoint     = g_tSet;
+    double pid          = pidOutput;
+    ProcessState st     = g_currentState;
+    state_unlock();
+
+    bool isRunning = (st == ProcessState::RUNNING_AUTO ||
+                      st == ProcessState::RUNNING_MANUAL);
+
+    // Wszystkie trzy warunki muszą być spełnione jednocześnie
+    bool shouldBeHeating = isRunning
+                        && (setpoint - currentTemp) > HEATER_FAULT_MIN_ERROR
+                        && pid > HEATER_FAULT_MIN_PID;
+
+    if (shouldBeHeating && !hfm.monitoring) {
+        // --- START nowego okna pomiarowego ---
+        hfm.tempAtWindowStart = currentTemp;
+        hfm.windowStart       = millis();
+        hfm.monitoring        = true;
+        LOG_FMT(LOG_LEVEL_DEBUG,
+                "HeaterFault: monitoring started (T=%.1f, set=%.1f, PID=%.0f%%)",
+                currentTemp, setpoint, pid);
+
+    } else if (!shouldBeHeating && hfm.monitoring) {
+        // --- Warunki przestały być spełnione – reset bez alarmu ---
+        // Normalne sytuacje: temp doszła blisko celu, PID zredukował moc,
+        // drzwi, pauza, itp.
+        hfm.monitoring = false;
+        LOG_FMT(LOG_LEVEL_DEBUG,
+                "HeaterFault: monitoring stopped (T=%.1f, set=%.1f, PID=%.0f%%)",
+                currentTemp, setpoint, pid);
+
+    } else if (shouldBeHeating && hfm.monitoring) {
+        // --- Okno pomiarowe trwa – sprawdź po upływie czasu ---
+        unsigned long elapsed = millis() - hfm.windowStart;
+
+        if (elapsed >= HEATER_NO_RISE_TIMEOUT_MS) {
+            double rise = currentTemp - hfm.tempAtWindowStart;
+
+            if (rise < HEATER_MIN_TEMP_RISE) {
+                // ========================================
+                // AWARIA POTWIERDZONA
+                // ========================================
+                if (state_lock()) {
+                    g_currentState = ProcessState::PAUSE_HEATER_FAULT;
+                    g_processStats.pauseCount++;
+                    state_unlock();
+                }
+                allOutputsOff();
+                // 5 sygnałów: wyraźnie różny od innych alarmów (2-3 sygnały)
+                buzzerBeep(5, 300, 200);
+
+                LOG_FMT(LOG_LEVEL_ERROR,
+                        "!!! HEATER FAULT !!! No temp rise in %lu min",
+                        HEATER_NO_RISE_TIMEOUT_MS / 60000UL);
+                LOG_FMT(LOG_LEVEL_ERROR,
+                        "  T at window start: %.1f C", hfm.tempAtWindowStart);
+                LOG_FMT(LOG_LEVEL_ERROR,
+                        "  T now:             %.1f C", currentTemp);
+                LOG_FMT(LOG_LEVEL_ERROR,
+                        "  Rise:              %.1f C (min required: %.1f C)",
+                        rise, HEATER_MIN_TEMP_RISE);
+                LOG_FMT(LOG_LEVEL_ERROR,
+                        "  Setpoint:          %.1f C, PID output: %.0f%%",
+                        setpoint, pid);
+
+                hfm.monitoring = false;
+
+            } else {
+                // Temperatura rośnie prawidłowo – przesuń okno do przodu
+                LOG_FMT(LOG_LEVEL_DEBUG,
+                        "HeaterFault: window OK (rise=%.1f C), advancing window",
+                        rise);
+                hfm.tempAtWindowStart = currentTemp;
+                hfm.windowStart       = millis();
+            }
+        }
+    }
+}
+
+// ======================================================
+// STATYSTYKI I ADAPTACJA PID
+// ======================================================
 
 static void updateProcessStats() {
     if (!state_lock()) return;
@@ -130,6 +253,10 @@ static void adaptPidParameters() {
     adaptivePid.lastAdaptation = now;
 }
 
+// ======================================================
+// PREDYKCYJNE STEROWANIE WENTYLATOREM
+// ======================================================
+
 void predictiveFanControl() {
     double currentTemp = 0;
     if (state_lock()) {
@@ -172,6 +299,10 @@ void predictiveFanControl() {
         }
     }
 }
+
+// ======================================================
+// TRYB AUTO
+// ======================================================
 
 static void handleAutoMode() {
     if (!state_lock()) return;
@@ -216,6 +347,9 @@ static void handleAutoMode() {
             log_msg(LOG_LEVEL_INFO, "Profile completed!");
         } else {
             applyCurrentStep();
+            // Reset monitora awarii grzałki przy zmianie kroku –
+            // nowy krok może mieć inną temp. startową
+            resetHeaterFaultMonitor();
             buzzerBeep(2, 100, 100);
             LOG_FMT(LOG_LEVEL_INFO, "Advanced to step %d", newStep);
         }
@@ -242,6 +376,10 @@ static void handleAutoMode() {
     }
 }
 
+// ======================================================
+// TRYB MANUALNY
+// ======================================================
+
 static void handleManualMode() {
     predictiveFanControl();
     handleFanLogic();
@@ -255,6 +393,10 @@ static void handleManualMode() {
         output_unlock();
     }
 }
+
+// ======================================================
+// ZASTOSOWANIE KROKU PROFILU
+// ======================================================
 
 void applyCurrentStep() {
     if (!state_lock()) return;
@@ -284,6 +426,10 @@ void applyCurrentStep() {
     ui_force_redraw();
 }
 
+// ======================================================
+// STARTY I WZNOWIENIE PROCESU
+// ======================================================
+
 void process_start_auto() {
     // [FIX] g_currentStep ustawiane pod lockiem
     if (state_lock()) {
@@ -309,6 +455,9 @@ void process_start_auto() {
         pid.SetTunings(CFG_Kp, CFG_Ki, CFG_Kd);
         state_unlock();
     }
+
+    // [NEW] Reset monitora awarii grzałki przy starcie
+    resetHeaterFaultMonitor();
 
     log_msg(LOG_LEVEL_INFO, "AUTO mode started");
 }
@@ -336,6 +485,9 @@ void process_start_manual() {
         state_unlock();
     }
 
+    // [NEW] Reset monitora awarii grzałki przy starcie
+    resetHeaterFaultMonitor();
+
     log_msg(LOG_LEVEL_INFO, "MANUAL mode started");
 }
 
@@ -345,8 +497,16 @@ void process_resume() {
         g_currentState = ProcessState::SOFT_RESUME;
         state_unlock();
     }
+    // [NEW] Reset monitora awarii grzałki przy wznowieniu –
+    // po pauzie temperatura może być inna niż przed pauzą
+    resetHeaterFaultMonitor();
+
     log_msg(LOG_LEVEL_INFO, "Process resuming...");
 }
+
+// ======================================================
+// GŁÓWNA LOGIKA STEROWANIA (wywoływana co 100 ms z taskControl)
+// ======================================================
 
 void process_run_control_logic() {
     extern double pidInput, pidSetpoint;
@@ -379,6 +539,7 @@ void process_run_control_logic() {
             mapPowerToHeaters();
             handleAutoMode();
             updateProcessStats();
+            checkHeaterEfficiency();   // [NEW]
             break;
 
         case ProcessState::RUNNING_MANUAL:
@@ -387,6 +548,7 @@ void process_run_control_logic() {
             mapPowerToHeaters();
             handleManualMode();
             updateProcessStats();
+            checkHeaterEfficiency();   // [NEW]
             break;
 
         case ProcessState::SOFT_RESUME:
@@ -410,11 +572,16 @@ void process_run_control_logic() {
         case ProcessState::PAUSE_SENSOR:
         case ProcessState::PAUSE_OVERHEAT:
         case ProcessState::PAUSE_USER:
+        case ProcessState::PAUSE_HEATER_FAULT:   // [NEW]
         case ProcessState::ERROR_PROFILE:
             allOutputsOff();
             break;
     }
 }
+
+// ======================================================
+// FUNKCJE POMOCNICZE
+// ======================================================
 
 void process_force_next_step() {
     if (!state_lock()) return;
@@ -437,6 +604,9 @@ void process_force_next_step() {
     state_unlock();
 
     applyCurrentStep();
+    // [NEW] Reset monitora przy ręcznym przejściu do następnego kroku
+    resetHeaterFaultMonitor();
+
     LOG_FMT(LOG_LEVEL_INFO, "Step skipped to %d", nextStep);
     buzzerBeep(1, 100, 0);
 }
