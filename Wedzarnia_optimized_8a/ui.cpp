@@ -120,16 +120,17 @@ void ui_force_redraw() {
 
 const char* getStateStringForDisplay(ProcessState st) {
     switch (st) {
-        case ProcessState::IDLE: return "Czuwanie";
-        case ProcessState::RUNNING_AUTO: return "AUTO";
-        case ProcessState::RUNNING_MANUAL: return "MANUAL";
-        case ProcessState::PAUSE_DOOR: return "Pauza: Drzwi";
-        case ProcessState::PAUSE_SENSOR: return "Pauza: Czujnik";
-        case ProcessState::PAUSE_OVERHEAT: return "Pauza: Przegrzanie";
-        case ProcessState::PAUSE_USER: return "PAUZA";
-        case ProcessState::ERROR_PROFILE: return "Blad Profilu";
-        case ProcessState::SOFT_RESUME: return "Wznawianie...";
-        default: return "Nieznany";
+        case ProcessState::IDLE:               return "Czuwanie";
+        case ProcessState::RUNNING_AUTO:       return "AUTO";
+        case ProcessState::RUNNING_MANUAL:     return "MANUAL";
+        case ProcessState::PAUSE_DOOR:         return "Pauza: Drzwi";
+        case ProcessState::PAUSE_SENSOR:       return "Pauza: Czujnik";
+        case ProcessState::PAUSE_OVERHEAT:     return "Pauza: Przegrzanie";
+        case ProcessState::PAUSE_HEATER_FAULT: return "AWARIA Grzalki";   // [NEW]
+        case ProcessState::PAUSE_USER:         return "PAUZA";
+        case ProcessState::ERROR_PROFILE:      return "Blad Profilu";
+        case ProcessState::SOFT_RESUME:        return "Wznawianie...";
+        default:                               return "Nieznany";
     }
 }
 
