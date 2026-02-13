@@ -15,3 +15,7 @@ void process_force_next_step();
 // Nowe funkcje dla adaptacyjnego PID
 String getPidParameters();
 void resetAdaptivePid();
+
+// [NEW] Reset stanu zabezpieczenia awarii grzałki
+// Wywoływane przy process_start_auto(), process_start_manual() i process_resume()
+void resetHeaterFaultMonitor();
