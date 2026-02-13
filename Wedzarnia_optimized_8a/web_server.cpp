@@ -856,16 +856,17 @@ upload_form.addEventListener("submit", function(event) {
 
 static const char* getStateString(ProcessState st) {
   switch (st) {
-    case ProcessState::IDLE: return "IDLE";
-    case ProcessState::RUNNING_AUTO: return "AUTO";
-    case ProcessState::RUNNING_MANUAL: return "MANUAL";
-    case ProcessState::PAUSE_DOOR: return "PAUZA: DRZWI";
-    case ProcessState::PAUSE_SENSOR: return "PAUZA: CZUJNIK";
-    case ProcessState::PAUSE_OVERHEAT: return "PAUZA: PRZEGRZANIE";
-    case ProcessState::PAUSE_USER: return "PAUZA UZYTK.";
-    case ProcessState::ERROR_PROFILE: return "ERROR_PROFILE";
-    case ProcessState::SOFT_RESUME: return "Wznawianie...";
-    default: return "UNKNOWN";
+    case ProcessState::IDLE:               return "IDLE";
+    case ProcessState::RUNNING_AUTO:       return "AUTO";
+    case ProcessState::RUNNING_MANUAL:     return "MANUAL";
+    case ProcessState::PAUSE_DOOR:         return "PAUZA: DRZWI";
+    case ProcessState::PAUSE_SENSOR:       return "PAUZA: CZUJNIK";
+    case ProcessState::PAUSE_OVERHEAT:     return "PAUZA: PRZEGRZANIE";
+    case ProcessState::PAUSE_HEATER_FAULT: return "AWARIA: GRZALKA";   // [NEW]
+    case ProcessState::PAUSE_USER:         return "PAUZA UZYTK.";
+    case ProcessState::ERROR_PROFILE:      return "ERROR_PROFILE";
+    case ProcessState::SOFT_RESUME:        return "Wznawianie...";
+    default:                               return "UNKNOWN";
   }
 }
 
